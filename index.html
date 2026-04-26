@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>卡牌塔防 · 最小原型 v7</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="wrap">
+    <div id="stage">
+      <canvas id="game"></canvas>
+      <div id="fx-layer"></div>
+      <div id="notice-layer"></div>
+      <div id="intro-layer">
+        <div class="intro-card">
+          <div class="intro-title">最后的避难所</div>
+          <div class="intro-line">迷雾笼罩战场，敌方虫巢每晚刷新。</div>
+          <div class="intro-line">撑过第 5 天的血月，避难所就守住了。</div>
+          <div class="intro-hint">即将开始……</div>
+        </div>
+      </div>
+    </div>
+    <div id="hint">
+      空格：暂停 / 继续 &nbsp;·&nbsp;
+      顶部商店栏：直购普通卡 &nbsp;·&nbsp;
+      左键卡牌：打出（同名叠放） &nbsp;·&nbsp;
+      左键虫巢：出征（或聚焦） &nbsp;·&nbsp;
+      左键英雄：聚焦 &nbsp;·&nbsp;
+      左键礼盒：拾取 &nbsp;·&nbsp;
+      右键建筑：拆除 &nbsp;·&nbsp;
+      右键 / ESC：取消放置
+    </div>
+  </div>
+
+  <!-- v5: 加载顺序保证 fog 在 entities 之前定义 -->
+  <script src="src/config.js"></script>
+  <script src="src/data/cards.js"></script>
+  <script src="src/systems/fog.js"></script>
+  <script src="src/state.js"></script>
+
+  <script src="src/entities/core.js"></script>
+  <script src="src/entities/nest.js"></script>
+  <script src="src/entities/bug.js"></script>
+  <script src="src/entities/hero.js"></script>
+  <script src="src/entities/swordsman.js"></script>
+  <script src="src/entities/buildings.js"></script>
+  <script src="src/entities/scout.js"></script>
+  <script src="src/entities/gift.js"></script>
+
+  <script src="src/systems/combat.js"></script>
+  <script src="src/systems/phase.js"></script>
+  <script src="src/systems/spawn.js"></script>
+  <script src="src/systems/searchlight.js"></script>   <!-- v7.1 -->
+  <script src="src/systems/talents.js"></script>       <!-- v7.1 -->
+  <script src="src/systems/ai.js"></script>
+  <script src="src/systems/cards.js"></script>
+  <script src="src/systems/input.js"></script>
+
+  <script src="src/render/dom_fx.js"></script>
+  <script src="src/render/map.js"></script>
+  <script src="src/render/effects.js"></script>
+  <script src="src/render/ui.js"></script>
+
+  <script src="src/main.js"></script>
+</body>
+</html>
