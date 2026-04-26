@@ -118,6 +118,16 @@ function pauseBtnRect() { return { x: G.canvasWidth - 80, y: 5, w: 70, h: 30 }; 
 // v7.1: 顶栏天赋按钮（在暂停按钮左边）
 function talentBtnRect() { return { x: G.canvasWidth - 170, y: 5, w: 80, h: 30 }; }
 
+// v8.2: 时间加倍按钮（在天赋按钮左边）
+function timeScaleBtnRect() { return { x: G.canvasWidth - 260, y: 5, w: 80, h: 30 }; }
+
+function cycleTimeScale() {
+  const scales = G.timeScales || [1, 2, 3];
+  const cur = (S.timeScale && scales.includes(S.timeScale)) ? S.timeScale : 1;
+  const idx = scales.indexOf(cur);
+  S.timeScale = scales[(idx + 1) % scales.length];
+}
+
 // v7.1: 探照灯方向按钮（围绕选定的 cell，4 方向圆形按钮）
 function searchlightDirectionRects() {
   const pm = S.placementMode;
@@ -134,23 +144,29 @@ function searchlightDirectionRects() {
   ];
 }
 
-// v7.1: 天赋面板内每个节点 rect
+// v8.1: 天赋面板按 4 大类分组（每类一列纵向铺节点）
+// v8.2: 缩节点高度让最长列（英雄 9 节点）能完整放下
 function talentNodeRects() {
   if (!S.overlay || S.overlay.kind !== 'talents') return [];
+  const cats = (G.talents && G.talents.categories) || [];
   const defs = (G.talents && G.talents.defs) || [];
   const rects = [];
-  const cols = 3, w = 200, h = 90, gap = 14;
-  const totalW = cols * w + (cols - 1) * gap;
-  const totalH = Math.ceil(defs.length / cols) * h + (Math.ceil(defs.length / cols) - 1) * gap;
+  const colW = 200, nodeH = 50, gap = 3, colGap = 12;
+  const totalW = cats.length * colW + (cats.length - 1) * colGap;
   const startX = (G.canvasWidth - totalW) / 2;
-  const startY = G.mapTop + (G.mapPixelHeight - totalH) / 2 + 10;
-  for (let i = 0; i < defs.length; i++) {
-    const col = i % cols, row = Math.floor(i / cols);
-    rects.push({
-      x: startX + col * (w + gap),
-      y: startY + row * (h + gap),
-      w, h, talentId: defs[i].id,
-    });
+  const startY = G.mapTop + 70;
+  for (let ci = 0; ci < cats.length; ci++) {
+    const cat = cats[ci];
+    const colX = startX + ci * (colW + colGap);
+    const colDefs = defs.filter(d => d.category === cat.id);
+    for (let i = 0; i < colDefs.length; i++) {
+      rects.push({
+        x: colX,
+        y: startY + i * (nodeH + gap),
+        w: colW, h: nodeH,
+        talentId: colDefs[i].id,
+      });
+    }
   }
   return rects;
 }
@@ -340,6 +356,10 @@ function bindInput(canvas) {
       if (pointInRect(mx, my, talentBtnRect())) {
         S.overlay = { kind: 'talents' };
       }
+      // v8.2: 时间加倍按钮
+      if (pointInRect(mx, my, timeScaleBtnRect())) {
+        cycleTimeScale();
+      }
       return;
     }
 
@@ -381,6 +401,11 @@ function bindInput(canvas) {
       const gift = S.gifts && S.gifts.find(g => !g.pickedUp && !g.expired
                                                 && Math.round(g.x) === c.x && Math.round(g.y) === c.y);
       if (gift) { onClickGift(gift); return; }
+
+      // v8.2: 宝箱点击拾取
+      const treasure = S.treasures && S.treasures.find(t => !t.pickedUp
+                                                && Math.round(t.x) === c.x && Math.round(t.y) === c.y);
+      if (treasure && typeof onClickTreasure === 'function') { onClickTreasure(treasure); return; }
 
       // v6: target-select 模式（仅 lightning）
       if (S.placementMode && S.placementMode.selectKind) {
@@ -442,6 +467,11 @@ function bindInput(canvas) {
     if (e.key === 't' || e.key === 'T') {
       if (S.overlay && S.overlay.kind === 'talents') S.overlay = null;
       else if (!S.overlay && !S.gameOver) S.overlay = { kind: 'talents' };
+      return;
+    }
+    // v8.2: F 键切换时间加倍
+    if ((e.key === 'f' || e.key === 'F') && !S.overlay && !S.gameOver) {
+      cycleTimeScale();
       return;
     }
   });

@@ -125,12 +125,87 @@ function spawnNightlyNest() {
     timer: G.fx.newNestRing,
     duration: G.fx.newNestRing,
   });
-  showMessage(`新虫巢出现：${isArmored ? '钢壳' : '普通'} (${pos.x},${pos.y})`);
+  // v8.2: 新刷虫巢立即孵满虫子（避免刚刷就被秒）
+  fillNestToCap(n);
+  showMessage(`新虫巢出现：${isArmored ? '钢壳' : '普通'}（已满兵）`);
   return n;
 }
+
+// v8: 血月 dusk 触发时的智能补刷虫巢
+function spawnBloodMoonNests() {
+  const cfg = G.bloodMoon && G.bloodMoon.nestRefreshOnDusk;
+  if (!cfg || !cfg.enabled) return [];
+  const aliveNow = S.nests.filter(n => n.alive).length;
+  // 计算应刷数量
+  let toSpawn = Math.max(0, (cfg.minNestsAfter || 3) - aliveNow);
+  if (aliveNow === 0) toSpawn += (cfg.extraIfNoNests || 2);
+  if (toSpawn === 0) toSpawn = 1;       // 至少刷 1 个（保证压力）
+  // 收集已确定要刷的（用于做 elite 计数）
+  const result = [];
+  let eliteSpawned = 0;
+  for (let i = 0; i < toSpawn; i++) {
+    const pos = randomCellAnywhere({ exclude: result });
+    if (!pos) continue;
+    // 决定是否钢壳：剩余指标里若 elite 不够 → 强制；否则按 eliteChanceWhenFew 概率
+    const stillNeedElite = (eliteSpawned < (cfg.eliteAtLeast || 1));
+    const remaining = toSpawn - i;
+    let isArmored;
+    if (stillNeedElite && remaining <= ((cfg.eliteAtLeast || 1) - eliteSpawned)) {
+      isArmored = true;                  // 必须 elite
+    } else if (stillNeedElite || aliveNow < (cfg.minNestsAfter || 3)) {
+      isArmored = Math.random() < (cfg.eliteChanceWhenFew || 0.6);
+    } else {
+      isArmored = Math.random() < 0.3;
+    }
+    if (isArmored) eliteSpawned++;
+    const ncfg = isArmored ? G.armoredNest : G.nest;
+    const n = {
+      id: nextId(), kind: 'nest',
+      x: pos.x, y: pos.y,
+      type: isArmored ? NestType.ARMORED : NestType.NORMAL,
+      hp: ncfg.hp, maxHp: ncfg.maxHp,
+      state: 'fortified',
+      spawnTimer: ncfg.spawnIntervals.day * 0.5,    // 血月期间孵化更快
+      bugCount: 0,
+      alive: true,
+      lastCombatAt: 0,
+    };
+    S.nests.push(n);
+    result.push(n);
+    S.fx.push({
+      type: 'newNestRing',
+      x: n.x, y: n.y,
+      timer: G.fx.newNestRing,
+      duration: G.fx.newNestRing,
+    });
+    // v8.2: 血月刷的虫巢立即孵满
+    fillNestToCap(n);
+  }
+  if (result.length > 0) {
+    showMessage(`血月刷新 ${result.length} 座虫巢（${eliteSpawned} 钢壳，已满兵）`);
+  }
+  return result;
+}
+
+// v8.2: 新虫巢刷出后立即孵化到 cap，避免刚刷就被秒
+function fillNestToCap(nest) {
+  if (!nest || !nest.alive) return;
+  const baseCap = (typeof nestCurrentBugCap === 'function') ? nestCurrentBugCap() : 5;
+  const cap = baseCap * (S.bloodMoonActive ? (G.bloodMoon.bugCapMul || 2) : 1);
+  let safetyLimit = 30;       // 防止逻辑错误导致死循环
+  while (nest.alive && nest.bugCount < cap && safetyLimit-- > 0) {
+    if (typeof makeBug !== 'function') break;
+    makeBug(nest, {
+      bloodMoon: !!S.bloodMoonActive,
+      isBloodMoonNight: !!S.bloodMoonActive,
+    });
+  }
+}
+window.fillNestToCap = fillNestToCap;
 
 // 暴露给 state.js / phase.js
 window.generateInitialNests = generateInitialNests;
 window.randomCellAnywhere = randomCellAnywhere;
 window.randomCellInQuadrant = randomCellInQuadrant;     // 兼容旧名
 window.spawnNightlyNest = spawnNightlyNest;
+window.spawnBloodMoonNests = spawnBloodMoonNests;

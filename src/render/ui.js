@@ -22,8 +22,20 @@ function drawTopBar(ctx) {
 
   const phaseName = { day: '白天', dusk: '傍晚', night: '夜晚', dawn: '黎明' }[S.phase];
   const timerStr = Math.ceil(Math.max(0, S.phaseTimer));
-  const bloodStr = (S.bloodMoonTriggered && !S.bloodMoonActive) ? '已过' :
-                   (S.bloodMoonIn === 0 ? '今夜!' : `${S.bloodMoonIn} 天`);
+  // v8: 血月按数组触发，顶栏显示 已完成/需要 + 下一次倒数
+  const bmDays = G.bloodMoonDays || [G.bloodMoonDay];
+  const need = G.winRequiredBloodMoons || 2;
+  const done = (S.flags && S.flags.bloodMoonsCompleted) || 0;
+  let bloodStr;
+  if (S.flags && S.flags.terminalBossSpawned) {
+    bloodStr = '终极BOSS';
+  } else if (S.bloodMoonActive) {
+    bloodStr = '今夜!';
+  } else {
+    const nextBm = bmDays.find(d => d > S.day) || bmDays.find(d => d === S.day);
+    const inDays = nextBm ? Math.max(0, nextBm - S.day) : 0;
+    bloodStr = `${done}/${need} · ${inDays === 0 ? '今天' : inDays + '天后'}`;
+  }
   const gems = (S.playerState && S.playerState.gems) || 0;
 
   ctx.fillStyle = G.colors.text;
@@ -101,6 +113,19 @@ function drawTopBar(ctx) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(`🌟 天赋 ${tp}`, tr.x + tr.w / 2, tr.y + tr.h / 2);
+
+  // v8.2: 时间加倍按钮（在天赋按钮左边）
+  const ts = (S.timeScale) || 1;
+  const tsr = timeScaleBtnRect();
+  ctx.fillStyle = ts > 1 ? '#16A085' : '#444';
+  ctx.fillRect(tsr.x, tsr.y, tsr.w, tsr.h);
+  ctx.strokeStyle = '#FFF';
+  ctx.strokeRect(tsr.x, tsr.y, tsr.w, tsr.h);
+  ctx.fillStyle = '#FFF';
+  ctx.font = 'bold 12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`⏩ ×${ts} (F)`, tsr.x + tsr.w / 2, tsr.y + tsr.h / 2);
 }
 
 // v6: 商店栏 6 个直购按钮
@@ -548,8 +573,10 @@ function drawGameOver(ctx) {
   ctx.fillStyle = '#FFF';
   let subtitle = '';
   if (S.victory) {
-    if (S.victoryReason === 'survived_blood_moon') {
-      subtitle = '撑过了第一次血月 · 避难所守住了';
+    if (S.victoryReason === 'killed_terminal_boss') {
+      subtitle = '终极 BOSS 已击败 · 避难所守住了';
+    } else if (S.victoryReason === 'survived_blood_moon') {
+      subtitle = '撑过了血月 · 避难所守住了';
     } else if (S.victoryReason === 'survived_seven_days') {
       subtitle = `坚守了 ${G.survivalDay} 天 · 避难所平安`;
     } else {
@@ -613,20 +640,44 @@ function drawCardOverlay(ctx) {
   }
 }
 
-// v7.1: 天赋面板
+// v8.1: 天赋面板（4 列分类纵向）；v8.2: 节点高 50px、覆盖整 canvas、紧凑布局
 function drawTalentsOverlay(ctx) {
+  // 覆盖层扩到整个 canvas（避免 9 节点列溢出 mapPixelHeight）
+  ctx.fillStyle = 'rgba(0,0,0,0.78)';
+  ctx.fillRect(0, G.topBarHeight, G.canvasWidth, G.canvasHeight - G.topBarHeight);
+
   const points = (S.talents && S.talents.points) || 0;
-  const headerY = G.mapTop + 40;
   ctx.fillStyle = '#FFF';
-  ctx.font = 'bold 22px sans-serif';
+  ctx.font = 'bold 20px sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(`核心天赋树（剩余 ${points} 点）`, G.canvasWidth / 2, headerY);
-
-  ctx.font = '12px sans-serif';
+  ctx.fillText(`核心天赋树 · 剩余 ${points} 点`, G.canvasWidth / 2, G.mapTop + 18);
+  ctx.font = '11px sans-serif';
   ctx.fillStyle = '#AAA';
-  ctx.fillText('每天清晨 +1 / 每杀虫巢 +1 / 每 10 个虫子 +1', G.canvasWidth / 2, headerY + 22);
+  ctx.fillText('每天清晨 +1 / 每杀虫巢 +1 / 每 5 个虫子 +1', G.canvasWidth / 2, G.mapTop + 38);
 
+  // 分类列标题
+  const cats = (G.talents && G.talents.categories) || [];
+  const defs = (G.talents && G.talents.defs) || [];
+  const colW = 200, gap = 12;
+  const totalW = cats.length * colW + (cats.length - 1) * gap;
+  const startX = (G.canvasWidth - totalW) / 2;
+  const titleY = G.mapTop + 50;
+  const colColors = { hero: '#7C5DBF', common: '#5DADE2', military: '#E67E22', production: '#52BE80' };
+  for (let ci = 0; ci < cats.length; ci++) {
+    const cat = cats[ci];
+    const colX = startX + ci * (colW + gap);
+    ctx.fillStyle = colColors[cat.id] || '#888';
+    ctx.fillRect(colX, titleY, colW, 16);
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const count = defs.filter(d => d.category === cat.id).length;
+    ctx.fillText(`${cat.label} · ${count} 节点`, colX + colW / 2, titleY + 8);
+  }
+
+  // 节点（紧凑版：name+cost / 描述 / 前置或状态）
   for (const r of talentNodeRects()) {
     const def = (typeof talentDef === 'function') ? talentDef(r.talentId) : null;
     if (!def) continue;
@@ -641,30 +692,50 @@ function drawTalentsOverlay(ctx) {
     ctx.lineWidth = unlocked ? 2 : 1;
     ctx.strokeRect(r.x, r.y, r.w, r.h);
     ctx.lineWidth = 1;
-    // 名称
+    // 顶部色条（标 category）
+    const accentColor = colColors[def.category] || '#888';
+    ctx.fillStyle = accentColor;
+    ctx.fillRect(r.x, r.y, r.w, 2);
+
+    // 第 1 行：名称（左）+ cost / 状态（右）
     ctx.fillStyle = unlocked ? '#7CFFB3' : '#FFF';
-    ctx.font = 'bold 14px sans-serif';
+    ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'top';
-    ctx.fillText(def.name + (unlocked ? '（已解锁）' : ` · ${def.cost} 点`), r.x + 10, r.y + 10);
-    // 描述
-    ctx.font = '11px sans-serif';
+    ctx.fillText(def.name, r.x + 6, r.y + 5);
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = unlocked ? '#7CFFB3' : (chk.ok ? '#FFD54F' : '#E74C3C');
+    ctx.fillText(unlocked ? '已解锁' : `${def.cost} 点`, r.x + r.w - 6, r.y + 6);
+
+    // 第 2 行：描述（单行截断，超出加 …）
+    ctx.font = '10px sans-serif';
     ctx.fillStyle = '#CCC';
-    wrapText(ctx, def.description, r.x + 10, r.y + 32, r.w - 20, 14);
-    // 前置
+    ctx.textAlign = 'left';
+    const descMaxW = r.w - 12;
+    let desc = def.description || '';
+    if (ctx.measureText(desc).width > descMaxW) {
+      while (desc.length > 0 && ctx.measureText(desc + '…').width > descMaxW) {
+        desc = desc.slice(0, -1);
+      }
+      desc += '…';
+    }
+    ctx.fillText(desc, r.x + 6, r.y + 22);
+
+    // 第 3 行：前置 / 不可解锁原因
+    ctx.font = '9px sans-serif';
+    ctx.textBaseline = 'top';
     if (def.prereq) {
       const prereqDef = (typeof talentDef === 'function') ? talentDef(def.prereq) : null;
       const prereqOk = (typeof isUnlocked === 'function') && isUnlocked(def.prereq);
-      ctx.font = '10px sans-serif';
-      ctx.fillStyle = prereqOk ? '#5DBF5D' : '#E74C3C';
-      ctx.fillText('前置：' + (prereqDef ? prereqDef.name : def.prereq), r.x + 10, r.y + r.h - 16);
+      ctx.fillStyle = prereqOk ? '#5DBF5D' : '#E0A040';
+      ctx.textAlign = 'left';
+      ctx.fillText('前置：' + (prereqDef ? prereqDef.name : def.prereq), r.x + 6, r.y + 36);
     }
-    // 状态
     if (!unlocked && !chk.ok) {
-      ctx.font = '10px sans-serif';
       ctx.fillStyle = '#E74C3C';
       ctx.textAlign = 'right';
-      ctx.fillText(chk.reason || '不可解锁', r.x + r.w - 10, r.y + r.h - 16);
+      ctx.fillText(chk.reason || '不可解锁', r.x + r.w - 6, r.y + 36);
     }
   }
 

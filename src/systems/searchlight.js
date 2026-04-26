@@ -40,10 +40,13 @@ function updateSearchlights(dt) {
   if (!S.buildings) return;
   for (const b of S.buildings) {
     if (b.dead || b.type !== 'searchlight') continue;
-    if (b.scanTimer === undefined) b.scanTimer = G.searchlight.scanInterval;
+    // v8.1: 灯火通明天赋 → 扫描间隔 ×searchlightIntervalMul（默认 1，解锁后 0.7）
+    const intervalMul = (S.mul && S.mul.searchlightIntervalMul) || 1;
+    const interval = G.searchlight.scanInterval * intervalMul;
+    if (b.scanTimer === undefined) b.scanTimer = interval;
     b.scanTimer -= dt;
     if (b.scanTimer > 0) continue;
-    b.scanTimer = G.searchlight.scanInterval;
+    b.scanTimer = interval;
     // 收集锥形内的格子
     const cells = _searchlightConeCells(b);
     if (cells.length === 0) continue;

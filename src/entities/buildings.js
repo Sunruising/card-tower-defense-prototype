@@ -4,18 +4,21 @@
 function makeBuilding(type, x, y, opts) {
   opts = opts || {};
   const cfg = G[buildingCfgKey(type)];
+  const buildingHpMul = (S.mul && S.mul.buildingHpMul) || 1;
   const b = {
     id: nextId(), kind: 'building',
     type,
     x, y,
-    hp: cfg.hp, maxHp: cfg.maxHp,
+    hp: cfg.hp * buildingHpMul,
+    maxHp: cfg.maxHp * buildingHpMul,
     lastCombatAt: 0,             // v5
   };
   if (type === 'collector') {
     b.produceTimer = G.collector.produceInterval;
   } else if (type === 'reinforced_collector') {
     b.produceTimer = G.reinforcedCollector.produceInterval;
-    b.warmupTimer = G.reinforcedCollector.warmupTime;     // v5: 暖机
+    // v8.1: reinforcedWarmupReduce 累减暖机时长（不低于 0）
+    b.warmupTimer = Math.max(0, G.reinforcedCollector.warmupTime - ((S.mul && S.mul.reinforcedWarmupReduce) || 0));
   } else if (type === 'tower') {
     b.attackCd = 0;
   } else if (type === 'mage_tower') {
@@ -23,13 +26,17 @@ function makeBuilding(type, x, y, opts) {
   } else if (type === 'slow_spike') {
     // v6 §3: 不可被攻击 + 5 次使用次数
     b.targetable = G.slowSpike.targetable;       // false
-    b.usesLeft = G.slowSpike.usesLeft;            // 5
+    // v8.1: spikeUsesBonus 累加到 usesLeft
+    b.usesLeft = G.slowSpike.usesLeft + ((S.mul && S.mul.spikeUsesBonus) || 0);
     b.usedOnBugs = new Set();                     // 同一只虫子在同一地刺只扣 1 次
   } else if (type === 'watchtower') {
     // v5: 建造立即永久揭雾
+    // v8.1: watchtowerRadiusBonus 累加到揭雾半径
     if (typeof revealPermanent === 'function') {
-      revealPermanent(x, y, G.fog.watchtowerRadius, 'watchtower#' + b.id);
+      revealPermanent(x, y, G.fog.watchtowerRadius + ((S.mul && S.mul.watchtowerRadiusBonus) || 0), 'watchtower#' + b.id);
     }
+    // v8: 视野单位吸引仇恨
+    b.attractsAggro = true;
   } else if (type === 'barracks') {
     b.respawnQueue = [];
     for (let i = 0; i < G.barracks.keepSwordsmen; i++) {
@@ -38,10 +45,13 @@ function makeBuilding(type, x, y, opts) {
   } else if (type === 'searchlight') {
     // v7.1: 探照灯 —— 缓慢锥形永久驱散
     b.direction = opts.direction || 'right';
-    b.scanTimer = G.searchlight.scanInterval;          // 等待第一次扫描
+    // v8.1: searchlightIntervalMul 缩放扫描间隔
+    b.scanTimer = G.searchlight.scanInterval * ((S.mul && S.mul.searchlightIntervalMul) || 1);
     b.targetable = G.searchlight.targetable;           // true（可被攻击）
     b.fogOwnerId = 'searchlight#' + b.id;              // revealPermanent / removePermanent owner
     // 不立即驱散；扫描由 updateSearchlights 触发
+    // v8: 视野单位吸引仇恨
+    b.attractsAggro = true;
   }
   S.buildings.push(b);
   return b;
@@ -76,10 +86,11 @@ function killBuilding(b) {
   if (b.type === 'watchtower' && typeof removePermanent === 'function') {
     removePermanent('watchtower#' + b.id);
   }
-  // v7.1: 探照灯毁灭时回滚它驱散过的所有格（保留与主区相连部分由 fog 系统处理）
-  if (b.type === 'searchlight' && typeof removePermanent === 'function') {
-    removePermanent(b.fogOwnerId);
-  }
+  // v8: 探照灯被毁/拆除时不回滚 fog —— 已驱散的格子永久保留为 visible
+  // owner key 仍存在于 fog 的 ownersMap 中，那些格子的 ownerCount 不会减；
+  // 即使建筑实例没了，格子仍属于该 owner，永久 visible（"废弃 owner 但不主动撤销"）。
+  // 长期运行 ownersMap 会积累，接受这个轻量泄漏。
+  // —— v7.1 的 removePermanent(b.fogOwnerId) 已删除。
 }
 
 function removeBuilding(b) {

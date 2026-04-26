@@ -38,10 +38,28 @@ function setupStageSize() {
 }
 
 function gameLoop(now) {
-  const dt = Math.min(0.05, (now - lastTime) / 1000);
+  const realDt = Math.min(0.05, (now - lastTime) / 1000);
   lastTime = now;
+  // v8.2 时间加倍 —— 把单帧 dt 拆成多个 sub-step（避免单帧 dt 太大让物理穿模）
+  const scale = (S && S.timeScale) || 1;
+  const subSteps = Math.max(1, Math.floor(scale));
+  const dt = realDt;          // 兼容老引用，每个 sub-step 内仍用单步 dt
 
   if (!S.paused && !S.gameOver) {
+    for (let s = 0; s < subSteps; s++) {
+      stepWorld(dt);
+    }
+  } else {
+    updateFx(dt);
+    updateMessage(dt);
+    updateCameraRing(dt);
+  }
+
+  render();
+  requestAnimationFrame(gameLoop);
+}
+
+function stepWorld(dt) {
     updatePhase(dt);
     // v6 §9: 血月后第一个白天的 rally 提示（仅一次）
     if (S.flags && S.flags.rallyEnabled && !S.flags.rallyChangeAnnounced && S.phase === 'day') {
@@ -56,6 +74,7 @@ function gameLoop(now) {
     updateBuildings(dt);
     if (typeof updateSearchlights === 'function') updateSearchlights(dt);   // v7.1: 探照灯锥形扫描
     updateScouts(dt);             // v5: 侦察兵
+    if (typeof updateTreasures === 'function') updateTreasures(dt);   // v8: 探索奖励拾取
     updateFog(dt);                // v5: 迷雾
     updateGifts(dt);
     updateFx(dt);
@@ -63,14 +82,6 @@ function gameLoop(now) {
     updateCameraRing(dt);
     if (typeof tickStatBumps === 'function') tickStatBumps(dt);   // v6.1
     checkWinLose();
-  } else {
-    updateFx(dt);
-    updateMessage(dt);
-    updateCameraRing(dt);
-  }
-
-  render();
-  requestAnimationFrame(gameLoop);
 }
 
 function updateCameraRing(dt) {

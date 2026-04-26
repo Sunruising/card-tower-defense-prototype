@@ -11,6 +11,7 @@ window.BugType = {
   GUARD: 'guard',
   HEAVY: 'heavy',
   BLOOD_BOSS: 'blood_boss',           // v6: 血月 Boss
+  TERMINAL_BOSS: 'terminal_boss',     // v8: 通关 Boss
 };
 
 // ----- v5: 迷雾枚举（v6 术语：驱散 = VISIBLE / 点亮 = TEMP_VISIBLE） -----
@@ -109,11 +110,20 @@ window.G = {
     giftRibbon: '#E84118',               // v6.1: 礼盒蝴蝶结红色
     giftBoxBody: '#F1C40F',              // 礼盒主体金色
     giftBoxLid: '#F39C12',               // 礼盒盖（深一档）
+    // v8
+    terminalBoss: '#4A0080',             // 终极 Boss 暗紫
+    terminalBossStroke: '#E0B0FF',
+    aggroMark: 'rgba(255,80,80,0.85)',   // 仇恨标记
+    treasure: '#F39C12',                 // 宝藏箱橙色
+    treasureGlow: 'rgba(255,215,0,0.6)',
   },
 
-  // ----- 阶段 -----
-  phaseDurations: { day: 90, dusk: 15, night: 75, dawn: 12 },
+  // ----- 阶段（v8: 整体时长缩短约 18%）-----
+  phaseDurations: { day: 75, dusk: 12, night: 60, dawn: 10 },
   phaseOrder: ['day', 'dusk', 'night', 'dawn'],
+
+  // ----- v8.2 时间加倍（顶栏 ⏩ 按钮 / F 键切换）-----
+  timeScales: [1, 2, 3],
 
   // ----- 初始 -----
   initial: {
@@ -370,17 +380,63 @@ window.G = {
   lightning: { damage: 25, range: 6 },
   recall: { },
 
-  // ----- 血月（v6 §8）-----
-  bloodMoonDay: 5,
+  // ----- 血月（v8: 多次触发 + 加压）-----
+  bloodMoonDay: 3,                       // 旧字段（第一次血月日，兼容）
+  bloodMoonDays: [3, 6, 9],              // v8: 血月触发日数组
+  winRequiredBloodMoons: 2,              // v8: 撑过 2 次后 D6 dawn 刷终极 Boss
   bloodMoon: {
-    triggerPhase: 'dusk',                // 第 5 天傍晚开始
-    nightDuration: 120,                  // v6: 夜晚 75 → 120s
-    bugCapMul: 2,                        // 每巢虫子上限 ×2
-    bugHpMul: 1.3,                       // 虫子 HP +30%
-    bugDamageMul: 1.2,                   // 虫子攻击 +20%
-    bossNestIndex: 1,                    // 第二个虫巢的虫流中混出 Boss（B/D 分别为 idx 1）
-    rewardRareCount: 1,                  // 1 张稀有保底
-    rewardEpicChance: 0.3,               // 30% 追加 1 张史诗
+    triggerPhase: 'dusk',
+    nightDuration: 95,                   // v8: 120 → 95s（配合整体缩短）
+    bugCapMul: 2.2,                      // v8: ×2 → ×2.2
+    bugHpMul: 1.4,                       // v8: +30% → +40%
+    bugDamageMul: 1.3,                   // v8: +20% → +30%
+    bossNestIndex: 0,                    // v8: 改为第一个虫巢（避免没第二个）
+    rewardRareCount: 1,
+    rewardEpicChance: 0.35,
+    // v8: 血月夜 dusk 触发时按当前虫巢数刷新加压
+    nestRefreshOnDusk: {
+      enabled: true,
+      minNestsAfter: 3,                  // 刷完后至少有这么多活巢
+      eliteAtLeast: 1,                   // 至少 1 个钢壳
+      extraIfNoNests: 2,                 // 完全没活巢时额外多刷 2
+      eliteChanceWhenFew: 0.6,           // 当前活巢 < minNestsAfter 时新巢钢壳几率
+    },
+  },
+
+  // v8: 终极 Boss（撑过 winRequiredBloodMoons 次血月后 dawn 刷出）
+  terminalBoss: {
+    hp: 600, maxHp: 600,
+    damage: 25,
+    speed: 0.35,
+    attackSpeed: 1, attackRange: 1.5,
+    sizeMul: 2.5,
+    glueDrop: 100,
+    gemsDrop: 5,
+    spawnAt: 'core_periphery',           // 在核心 4-6 格之外随机点
+  },
+
+  // v8: 仇恨机制
+  aggro: {
+    attractsAggroBuildings: ['watchtower', 'searchlight'],   // 视野建筑
+    scoutAttractsAggro: true,                                 // 侦察兵也吸引仇恨
+    rangeMulWhenAggroVisible: 2,                              // 视野/警戒范围 ×2
+    scoutHp: 8,
+    scoutMaxHp: 8,
+  },
+
+  // v8: 探索奖励（v8.2: pickupRange 0.8→1.4 + 可点击）
+  treasures: {
+    enabled: true,
+    initialCount: 4,
+    minDistanceFromCore: 5,
+    minDistanceFromOther: 3,
+    pickupRange: 1.4,
+    rewardPool: [
+      { weight: 40, kind: 'glue', amount: 25 },
+      { weight: 25, kind: 'gems', amount: 1 },
+      { weight: 20, kind: 'card_rare', amount: 1 },
+      { weight: 15, kind: 'glue', amount: 50 },
+    ],
   },
 
   // ----- 虫流虚假化（v6 §9：血月后启用）-----
@@ -467,39 +523,97 @@ window.G = {
     bloodMoonSurvivalOnly: true,
   },
 
-  // ----- v7.1 天赋树 -----
+  // ----- v7.1 / v8.1 天赋树（4 大类：英雄 / 公共 / 军事 / 生产）-----
   talents: {
     pointsPerDay: 1,                    // 每天清晨给 1 点
     pointsPerNestKill: 1,               // 每杀 1 个虫巢 +1 点
-    pointsPerKills: { every: 10, points: 1 },  // 每 10 个虫子 +1 点
+    pointsPerKills: { every: 5, points: 1 },   // v8.1: 每 5 杀 +1（10→5，配合扩树）
+    categories: [
+      { id: 'hero',       label: '英雄' },
+      { id: 'common',     label: '公共' },
+      { id: 'military',   label: '军事' },
+      { id: 'production', label: '生产' },
+    ],
     defs: [
-      { id: 'sharp1', name: '锋利 I', cost: 1,
-        description: '英雄基础攻击 +5',
+      // ===== 英雄 =====
+      { id: 'sharp1', category: 'hero', name: '锋利 I', cost: 1,
+        description: '英雄基础伤害 +5',
         prereq: null, effect: { heroDamage: 5 } },
-      { id: 'sharp2', name: '锋利 II', cost: 2,
-        description: '英雄基础攻击再 +8',
+      { id: 'sharp2', category: 'hero', name: '锋利 II', cost: 2,
+        description: '英雄基础伤害再 +8',
         prereq: 'sharp1', effect: { heroDamage: 8 } },
-      { id: 'tough1', name: '坚韧 I', cost: 1,
-        description: '英雄 maxHp +30 + 满血',
+      { id: 'tough1', category: 'hero', name: '坚韧 I', cost: 1,
+        description: '英雄最大生命 +30，立即回满',
         prereq: null, effect: { heroMaxHp: 30, heroHeal: 30 } },
-      { id: 'tough2', name: '坚韧 II', cost: 2,
-        description: '英雄 maxHp +50 + 满血',
+      { id: 'tough2', category: 'hero', name: '坚韧 II', cost: 2,
+        description: '英雄最大生命 +50，立即回满',
         prereq: 'tough1', effect: { heroMaxHp: 50, heroHeal: 50 } },
-      { id: 'swift', name: '迅捷', cost: 2,
-        description: '英雄 attackSpeed +60%',
+      { id: 'swift', category: 'hero', name: '迅捷', cost: 2,
+        description: '英雄攻速 +60%',
         prereq: 'sharp1', effect: { heroAttackSpeedMul: 1.6 } },
-      { id: 'vision', name: '视野', cost: 1,
-        description: '英雄 visionRadius +2',
+      { id: 'vision', category: 'hero', name: '视野', cost: 1,
+        description: '英雄视野半径 +2',
         prereq: null, effect: { heroVisionRadius: 2 } },
-      { id: 'expedition', name: '远征', cost: 1,
-        description: '英雄追击半径 +3 / marchSpeed +30%',
+      { id: 'expedition', category: 'hero', name: '远征', cost: 1,
+        description: '英雄追击半径 +3，行军速度 +30%',
         prereq: 'vision', effect: { heroChaseLimit: 3, heroMarchSpeedMul: 1.3 } },
-      { id: 'sweep_master', name: '扫击精进', cost: 2,
-        description: 'sweep CD -10s + damage +15',
+      { id: 'sweep_master', category: 'hero', name: '扫击精进', cost: 2,
+        description: '扫击冷却 −10 秒，伤害 +15',
         prereq: 'sharp1', effect: { sweepCdReduce: 10, sweepDamage: 15 } },
-      { id: 'nestbane', name: '巢穴克星', cost: 2,
+      { id: 'nestbane', category: 'hero', name: '巢穴克星', cost: 2,
         description: '英雄对虫巢伤害 ×1.5',
         prereq: 'sharp2', effect: { heroVsNestMul: 1.5 } },
+
+      // ===== 公共（所有建筑生效）=====
+      { id: 'fortify1', category: 'common', name: '坚固结构 I', cost: 2,
+        description: '所有建筑最大生命 +20%（含已建）',
+        prereq: null, effect: { buildingHpMul: 1.20 } },
+      { id: 'fortify2', category: 'common', name: '坚固结构 II', cost: 2,
+        description: '所有建筑最大生命再 +20%',
+        prereq: 'fortify1', effect: { buildingHpMul: 1.20 } },
+      { id: 'rapid_repair', category: 'common', name: '紧急维修', cost: 2,
+        description: '所有建筑脱战回血速率 +50%',
+        prereq: null, effect: { buildingRegenMul: 1.5 } },
+      { id: 'gushing_glue', category: 'common', name: '资源涌泉', cost: 2,
+        description: '每天清晨获得 30 胶质',
+        prereq: null, effect: { dailyGlueBonus: 30 } },
+      { id: 'farsight_grid', category: 'common', name: '远视联防', cost: 1,
+        description: '所有攻击型建筑射程 +0.5',
+        prereq: null, effect: { towerRangeBonus: 0.5 } },
+
+      // ===== 军事 =====
+      { id: 'arrow_master1', category: 'military', name: '箭塔精进 I', cost: 2,
+        description: '箭塔伤害 +50%',
+        prereq: null, effect: { towerDamageMul: 1.5 } },
+      { id: 'arrow_master2', category: 'military', name: '箭塔精进 II', cost: 2,
+        description: '箭塔攻速 +50%',
+        prereq: 'arrow_master1', effect: { towerAttackSpeedMul: 1.5 } },
+      { id: 'barracks_strong', category: 'military', name: '剑士营强化', cost: 2,
+        description: '剑士最大生命 +50%、伤害 +30%',
+        prereq: null, effect: { swordsmanHpMul: 1.5, swordsmanDamageMul: 1.3 } },
+      { id: 'mage_focus', category: 'military', name: '法师精纯', cost: 2,
+        description: '法师塔范围 ×1.5、伤害 +30%',
+        prereq: null, effect: { mageSplashMul: 1.5, mageDamageMul: 1.3 } },
+      { id: 'spike_durable', category: 'military', name: '锐利地刺', cost: 1,
+        description: '减速地刺使用次数 5 → 8',
+        prereq: null, effect: { spikeUsesBonus: 3 } },
+
+      // ===== 生产 =====
+      { id: 'glue_harvest', category: 'production', name: '采胶丰收', cost: 2,
+        description: '采胶器单次产出 +1（普通 1 → 2）',
+        prereq: null, effect: { collectorProduceBonus: 1 } },
+      { id: 'workshop_warm', category: 'production', name: '工坊速热', cost: 1,
+        description: '加固采胶器暖机时长 −5 秒',
+        prereq: null, effect: { reinforcedWarmupReduce: 5 } },
+      { id: 'farsight_tower', category: 'production', name: '望远千里', cost: 2,
+        description: '瞭望塔半径 +1（3 → 4）',
+        prereq: null, effect: { watchtowerRadiusBonus: 1 } },
+      { id: 'lantern_swift', category: 'production', name: '灯火通明', cost: 2,
+        description: '探照灯扫描频率 +30%（间隔 1.5s → 1.05s）',
+        prereq: null, effect: { searchlightIntervalMul: 0.7 } },
+      { id: 'far_scout', category: 'production', name: '远程斥候', cost: 1,
+        description: '侦察兵移速 ×1.5、抵达后停留 +10 秒',
+        prereq: null, effect: { scoutSpeedMul: 1.5, scoutLifetimeBonus: 10 } },
     ],
   },
 };

@@ -84,11 +84,13 @@ function earnTalentPoints(reason, amount) {
   }
 }
 
-// 把所有已解锁天赋的 effect 应用到 S.hero baseline + sweep baseline
+// 把所有已解锁天赋的 effect 应用到 S.hero baseline + sweep baseline + S.mul 全局乘数
 // 调用时机：unlockTalent 后；resetState 末尾（兜底，重启时 unlocked=[] 不影响）
 function applyAllTalentEffects() {
   if (!S || !S.hero) return;
-  // 1) 先把 S.hero 的可被天赋影响的字段重置回 G.hero baseline
+  ensureTalentState();
+
+  // ===== 1) 重置 S.hero baseline（v7.1 已有，保留）=====
   S.hero.maxHp = G.hero.maxHp;
   // hp 不强制重置（保留当前血量）；除非天赋有 heroHeal 才加血
   S.hero.damage = G.hero.damage;
@@ -103,17 +105,44 @@ function applyAllTalentEffects() {
   S.heroSweepDamageBonus = 0;
   S.hero.skillCardCD = G.hero.skillCardCD;     // 重置 sweep CD baseline
 
-  // 2) 遍历已解锁天赋，叠加 effect
-  ensureTalentState();
+  // ===== 2) 重置 S.mul baseline（v8.1）=====
+  // 记录"上一次的 buildingHpMul / swordsmanHpMul"用于按比例调已建建筑/剑士的 hp/maxHp
+  const prevBuildingHpMul = (S.mul && S.mul.buildingHpMul) || 1;
+  const prevSwordsmanHpMul = (S.mul && S.mul.swordsmanHpMul) || 1;
+
+  S.mul = {
+    // 公共
+    buildingHpMul: 1,
+    buildingRegenMul: 1,
+    dailyGlueBonus: 0,                  // 不是乘数，是每天额外胶（phase.js 在 dawn→day 时取用）
+    towerRangeBonus: 0,                 // 所有 attack 建筑射程 +
+    // 军事
+    towerDamageMul: 1,
+    towerAttackSpeedMul: 1,
+    swordsmanHpMul: 1,
+    swordsmanDamageMul: 1,
+    mageSplashMul: 1,
+    mageDamageMul: 1,
+    spikeUsesBonus: 0,                  // 累加到 G.slowSpike.usesLeft
+    // 生产
+    collectorProduceBonus: 0,           // 累加到 produceAmount
+    reinforcedWarmupReduce: 0,          // 累减暖机
+    watchtowerRadiusBonus: 0,
+    searchlightIntervalMul: 1,
+    scoutSpeedMul: 1,
+    scoutLifetimeBonus: 0,
+  };
+
+  // ===== 3) 遍历解锁节点叠加 effect =====
   let totalHeal = 0;
   for (const id of S.talents.unlocked) {
     const d = talentDef(id);
     if (!d || !d.effect) continue;
     const e = d.effect;
+
+    // 英雄
     if (e.heroDamage) S.hero.damage += e.heroDamage;
-    if (e.heroMaxHp) {
-      S.hero.maxHp += e.heroMaxHp;
-    }
+    if (e.heroMaxHp) S.hero.maxHp += e.heroMaxHp;
     if (e.heroHeal) totalHeal += e.heroHeal;
     if (e.heroAttackSpeedMul) S.hero.attackSpeed *= e.heroAttackSpeedMul;
     if (e.heroVisionRadius) S.hero.visionRadiusBonus += e.heroVisionRadius;
@@ -122,11 +151,67 @@ function applyAllTalentEffects() {
     if (e.heroVsNestMul) S.hero.vsNestMul = (S.hero.vsNestMul || 1) * e.heroVsNestMul;
     if (e.sweepCdReduce) S.hero.skillCardCD = Math.max(5, S.hero.skillCardCD - e.sweepCdReduce);
     if (e.sweepDamage) S.heroSweepDamageBonus = (S.heroSweepDamageBonus || 0) + e.sweepDamage;
+
+    // 公共
+    if (e.buildingHpMul) S.mul.buildingHpMul *= e.buildingHpMul;
+    if (e.buildingRegenMul) S.mul.buildingRegenMul *= e.buildingRegenMul;
+    if (e.dailyGlueBonus) S.mul.dailyGlueBonus += e.dailyGlueBonus;
+    if (e.towerRangeBonus) S.mul.towerRangeBonus += e.towerRangeBonus;
+    // 军事
+    if (e.towerDamageMul) S.mul.towerDamageMul *= e.towerDamageMul;
+    if (e.towerAttackSpeedMul) S.mul.towerAttackSpeedMul *= e.towerAttackSpeedMul;
+    if (e.swordsmanHpMul) S.mul.swordsmanHpMul *= e.swordsmanHpMul;
+    if (e.swordsmanDamageMul) S.mul.swordsmanDamageMul *= e.swordsmanDamageMul;
+    if (e.mageSplashMul) S.mul.mageSplashMul *= e.mageSplashMul;
+    if (e.mageDamageMul) S.mul.mageDamageMul *= e.mageDamageMul;
+    if (e.spikeUsesBonus) S.mul.spikeUsesBonus += e.spikeUsesBonus;
+    // 生产
+    if (e.collectorProduceBonus) S.mul.collectorProduceBonus += e.collectorProduceBonus;
+    if (e.reinforcedWarmupReduce) S.mul.reinforcedWarmupReduce += e.reinforcedWarmupReduce;
+    if (e.watchtowerRadiusBonus) S.mul.watchtowerRadiusBonus += e.watchtowerRadiusBonus;
+    if (e.searchlightIntervalMul) S.mul.searchlightIntervalMul *= e.searchlightIntervalMul;
+    if (e.scoutSpeedMul) S.mul.scoutSpeedMul *= e.scoutSpeedMul;
+    if (e.scoutLifetimeBonus) S.mul.scoutLifetimeBonus += e.scoutLifetimeBonus;
   }
-  // 应用一次性回血（仅 unlock 当下，避免每帧重复回血）
+
+  // ===== 4) 一次性英雄回血 =====
   if (totalHeal > 0) {
     S.hero.hp = Math.min(S.hero.maxHp, S.hero.hp + totalHeal);
   }
+
+  // ===== 5) 已建建筑/剑士的 hp 按比例调整 =====
+  // buildingHpMul 变化时，已建 building 的 maxHp 按 newMul/prevMul 重算；hp 等比缩放（保持伤痕比例）
+  if (S.buildings && S.buildings.length > 0) {
+    const ratio = S.mul.buildingHpMul / (prevBuildingHpMul || 1);
+    if (Math.abs(ratio - 1) > 1e-6) {
+      for (const b of S.buildings) {
+        if (b.dead) continue;
+        if (!b.maxHp || b.maxHp <= 0) continue;
+        const newMax = b.maxHp * ratio;
+        const hpFrac = b.hp / b.maxHp;
+        b.maxHp = newMax;
+        b.hp = newMax * hpFrac;
+      }
+    }
+  }
+  // swordsmanHpMul 同样按比例（仅 maxHp，hp 等比）
+  if (S.swordsmen && S.swordsmen.length > 0) {
+    const ratio = S.mul.swordsmanHpMul / (prevSwordsmanHpMul || 1);
+    if (Math.abs(ratio - 1) > 1e-6) {
+      for (const sw of S.swordsmen) {
+        if (sw.dead) continue;
+        if (!sw.maxHp || sw.maxHp <= 0) continue;
+        const newMax = sw.maxHp * ratio;
+        const hpFrac = sw.hp / sw.maxHp;
+        sw.maxHp = newMax;
+        sw.hp = newMax * hpFrac;
+      }
+    }
+  }
+  // 注：减速地刺 usesLeft 的处理
+  //   spikeUsesBonus 是节点 effect 累加值；已建地刺只有 usesLeft（剩余次数），无 maxUsesLeft。
+  //   若每次 unlock 都重置 usesLeft += bonus 会重复加（重置 baseline 后再叠加，原已使用次数会丢失）。
+  //   折中策略：不调整已建地刺的 usesLeft；新建地刺由 buildings.js 在 makeBuilding 时 + S.mul.spikeUsesBonus。
 }
 
 // 暴露

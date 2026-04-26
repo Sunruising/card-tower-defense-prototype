@@ -4,17 +4,19 @@ function makeBug(nest, opts = {}) {
   const isGuard = !!opts.guard;
   const isHeavy = !!opts.heavy;
   const isBloodBoss = !!opts.bloodBoss;
+  const isTerminalBoss = !!opts.terminalBoss;     // v8
   const bloodMoon = !!opts.bloodMoon;
   const isBloodMoonNight = !!opts.isBloodMoonNight;
 
   let cfg, bugType;
-  if (isBloodBoss) { cfg = G.bloodBoss; bugType = BugType.BLOOD_BOSS; }
+  if (isTerminalBoss) { cfg = G.terminalBoss; bugType = BugType.TERMINAL_BOSS; }
+  else if (isBloodBoss) { cfg = G.bloodBoss; bugType = BugType.BLOOD_BOSS; }
   else if (isBoss) { cfg = G.boss; bugType = BugType.BOSS; }
   else if (isHeavy) { cfg = G.heavyBug; bugType = BugType.HEAVY; }
   else { cfg = G.bug; bugType = isGuard ? BugType.GUARD : BugType.NORMAL; }
 
-  // v6 §8: 血月夜对普通虫的 hp/dmg 加成（不影响 boss/heavy/guard/bloodBoss）
-  const bm = isBloodMoonNight && !isBoss && !isHeavy && !isGuard && !isBloodBoss;
+  // v6 §8: 血月夜对普通虫的 hp/dmg 加成（不影响 boss/heavy/guard/bloodBoss/terminalBoss）
+  const bm = isBloodMoonNight && !isBoss && !isHeavy && !isGuard && !isBloodBoss && !isTerminalBoss;
   let hp = cfg.hp;
   let damage = cfg.damage;
   if (bm) {
@@ -47,6 +49,7 @@ function makeBug(nest, opts = {}) {
     isGuard,
     isHeavy,
     isBloodBoss,                      // v6
+    isTerminalBoss,                   // v8
     bloodBuffed: bm,                  // v6: 血月加成普通虫的视觉标记
     guardNestId: isGuard ? nest.id : null,
     attackSpeed: cfg.attackSpeed,
@@ -83,7 +86,8 @@ function killBug(bug) {
 
   if (!bug.retreating && !bug.silentRemove) {
     let drop;
-    if (bug.isBloodBoss) drop = G.bloodBoss.glueDrop;
+    if (bug.isTerminalBoss) drop = G.terminalBoss.glueDrop;
+    else if (bug.isBloodBoss) drop = G.bloodBoss.glueDrop;
     else if (bug.isBoss) drop = G.boss.glueDrop;
     else if (bug.isHeavy) drop = G.heavyBug.glueDrop;
     else if (bug.isGuard) drop = G.guardBug.glueDrop;
@@ -105,9 +109,19 @@ function killBug(bug) {
       }
     }
 
+    // v8: 终极 Boss 击破 → 掉胶 + 宝石 + 标记胜利 flag
+    if (bug.isTerminalBoss) {
+      if (S.playerState) S.playerState.gems += G.terminalBoss.gemsDrop;
+      if (S.flags) S.flags.terminalBossKilled = true;
+      if (typeof spawnFloatingText === 'function') {
+        spawnFloatingText(bug.x, bug.y, '终极 BOSS 击破！', 'kill-big');
+      }
+    }
+
     if (typeof spawnFloatingText === 'function') {
       let label, cls;
-      if (bug.isBloodBoss) { label = 'BLOOD BOSS!'; cls = 'kill-big'; }
+      if (bug.isTerminalBoss) { label = 'TERMINAL BOSS!'; cls = 'kill-big'; }
+      else if (bug.isBloodBoss) { label = 'BLOOD BOSS!'; cls = 'kill-big'; }
       else if (bug.isBoss) { label = 'BOSS!'; cls = 'kill-big'; }
       else if (bug.isHeavy) { label = '重甲虫!'; cls = 'kill-heavy'; }
       else { label = '+' + drop; cls = 'kill'; }
@@ -137,3 +151,74 @@ function bugCurrentSpeed(bug) {
   }
   return bug.speed;
 }
+
+// v8: 在地图核心 4-6 格之外刷出终极 Boss（不通过任何虫巢）
+function spawnTerminalBoss() {
+  if (S.flags && S.flags.terminalBossSpawned) return null;
+  // 在核心 4-6 格之外随机位置
+  let pos = null;
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const x = Math.floor(Math.random() * G.mapWidth);
+    const y = Math.floor(Math.random() * G.mapHeight);
+    const d = Math.hypot(x - S.core.x, y - S.core.y);
+    if (d < 4 || d > 6) continue;
+    pos = { x, y }; break;
+  }
+  if (!pos) {
+    // 兜底：核心右上 5 格
+    pos = {
+      x: Math.min(G.mapWidth - 1, Math.max(0, S.core.x + 5)),
+      y: Math.max(0, Math.min(G.mapHeight - 1, S.core.y - 3)),
+    };
+  }
+  const cfg = G.terminalBoss;
+  const bug = {
+    id: nextId(), kind: 'bug',
+    x: pos.x, y: pos.y,
+    hp: cfg.hp, maxHp: cfg.maxHp,
+    damage: cfg.damage,
+    speed: cfg.speed,
+    bugType: BugType.TERMINAL_BOSS,
+    isBoss: false, isGuard: false, isHeavy: false,
+    isBloodBoss: false, isTerminalBoss: true,
+    bloodBuffed: false,
+    guardNestId: null,
+    attackSpeed: cfg.attackSpeed,
+    attackRange: cfg.attackRange,
+    attackCd: 0,
+    nestId: -1,
+    state: 'marching',
+    target: null,
+    wanderDx: 0, wanderDy: 0, wanderTimer: 2,
+    lastCombatAt: 0, slowedUntil: 0,
+    rallyTarget: null,                // 终极 Boss 不集结，直奔核心
+  };
+  S.bugs.push(bug);
+  if (S.flags) S.flags.terminalBossSpawned = true;
+  // 永久驱散周围视野，给玩家明确目标（围一圈 1 格驱散）
+  if (typeof illuminateTile === 'function') {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const tx = Math.round(pos.x) + dx;
+        const ty = Math.round(pos.y) + dy;
+        if (tx < 0 || ty < 0 || tx >= G.mapWidth || ty >= G.mapHeight) continue;
+        // 极长 expose（用大数模拟"永久"）
+        illuminateTile(tx, ty, 9999);
+      }
+    }
+  }
+  // 视觉提示：在 Boss 出生点放一个新虫巢出现的环
+  S.fx.push({
+    type: 'newNestRing',
+    x: pos.x, y: pos.y,
+    timer: G.fx.newNestRing,
+    duration: G.fx.newNestRing,
+  });
+  if (typeof showNightNotice === 'function') {
+    showNightNotice('终极 BOSS 已现身！', 'night');
+  }
+  showMessage('终极 BOSS 在地图上出现，击败它即可获胜！');
+  return bug;
+}
+
+window.spawnTerminalBoss = spawnTerminalBoss;

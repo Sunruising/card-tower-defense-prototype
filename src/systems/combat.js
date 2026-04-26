@@ -38,6 +38,14 @@ function dealDamage(attacker, target, amount) {
   }
   if (target.kind === 'nest') {
     damageNest(target, amount);
+    // v8.2: 虫巢受击 → 加速孵化（每次受击让下一只虫子最多 1.5s 内孵出，仍受 bugCount cap 限制）
+    if (target.alive) {
+      if (target.spawnTimer > 1.5) target.spawnTimer = 1.5;
+      // 受击越狠（越接近死亡），孵化越紧迫
+      const hpFrac = target.hp / target.maxHp;
+      if (hpFrac < 0.5 && target.spawnTimer > 0.8) target.spawnTimer = 0.8;
+      if (hpFrac < 0.25 && target.spawnTimer > 0.3) target.spawnTimer = 0.3;
+    }
     return;
   }
   if (target.kind === 'hero') {
@@ -53,6 +61,12 @@ function dealDamage(attacker, target, amount) {
   if (target.kind === 'swordsman') {
     target.hp -= amount;
     if (target.hp <= 0) { target.dead = true; target.hp = 0; }
+    return;
+  }
+  // v8: 侦察兵可被攻击（agent B 给 scout 加 hp/maxHp/dead）
+  if (target.kind === 'scout') {
+    target.hp -= amount;
+    if (target.hp <= 0) target.dead = true;
     return;
   }
   if (target.kind === 'building') {
@@ -145,13 +159,12 @@ function checkWinLose() {
     return;
   }
 
-  // v7: 删除"所有虫巢消灭"和"第 7 天保底"分支
-  // v7 唯一胜利路径：撑过血月夜 → bloodMoonSurvived flag 在 phase.js dawn 收尾时设置
-  // 等浮层（如奖励包）关闭后才触发胜利，避免遮挡 UI
-  if (S.flags && S.flags.bloodMoonSurvived && !S.overlay) {
+  // v8: 击杀终极 Boss = 胜利（删除 v7 的 bloodMoonSurvived 单次胜利）
+  // 等浮层（奖励包等）关闭后才触发，避免遮挡 UI
+  if (S.flags && S.flags.terminalBossKilled && !S.overlay) {
     S.victory = true;
     S.gameOver = true;
-    S.victoryReason = 'survived_blood_moon';
+    S.victoryReason = 'killed_terminal_boss';
     if (typeof onGameEnd === 'function') onGameEnd();
     return;
   }

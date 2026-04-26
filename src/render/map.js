@@ -52,6 +52,9 @@ function drawMap(ctx) {
   // 礼盒：仅可见区域可见
   drawGifts(ctx);
 
+  // v8: 探索宝藏（仅在驱散区域可见）
+  drawTreasures(ctx);
+
   // v5 迷雾 overlay（在单位之上，目标提示之下）
   drawFogOverlay(ctx);
 
@@ -326,6 +329,15 @@ function drawBuilding(ctx, b) {
       ctx.beginPath(); ctx.arc(px, py, G.fog.watchtowerRadius * G.cellSize, 0, Math.PI * 2); ctx.stroke();
     }
   }
+  // v8: attractsAggro 红圈视觉（瞭望塔/探照灯）— 提示玩家"虫子优先打这个"
+  if (b.attractsAggro && !b.dead) {
+    ctx.strokeStyle = G.colors.aggroMark || 'rgba(255,80,80,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.arc(px, py, 22, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1;
+  }
   drawHpBar(ctx, px, py, 40, b.hp, b.maxHp);
 }
 
@@ -358,6 +370,15 @@ function drawScout(ctx, sc) {
   ctx.beginPath(); ctx.arc(px, py, 7, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#FFF'; ctx.lineWidth = 1; ctx.stroke();
   drawCenterChar(ctx, px, py, '侦', '#FFF', 8);
+  // v8: hp bar（侦察兵可被打）
+  if (sc.maxHp) drawHpBar(ctx, px, py, 18, sc.hp, sc.maxHp);
+  // v8: attractsAggro 红圈
+  if (sc.attractsAggro) {
+    ctx.strokeStyle = G.colors.aggroMark || 'rgba(255,80,80,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 1;
+  }
   // 视野半径轻量提示
   ctx.strokeStyle = 'rgba(93,173,226,0.35)';
   ctx.beginPath(); ctx.arc(px, py, G.fog.scoutVisionRadius * G.cellSize, 0, Math.PI * 2); ctx.stroke();
@@ -390,7 +411,8 @@ function drawScout(ctx, sc) {
 function drawBug(ctx, bug) {
   const { px, py } = cellToPixel(bug.x, bug.y);
   let r, fill;
-  if (bug.isBloodBoss) { r = 24; fill = G.colors.bloodBoss; }
+  if (bug.isTerminalBoss) { r = 32; fill = G.colors.terminalBoss; }    // v8
+  else if (bug.isBloodBoss) { r = 24; fill = G.colors.bloodBoss; }
   else if (bug.isBoss) { r = 12; fill = G.colors.bugBoss; }
   else if (bug.isHeavy) { r = 9; fill = G.colors.bugHeavy; }
   else if (bug.isGuard) { r = 8; fill = G.colors.bugGuard; }
@@ -398,7 +420,20 @@ function drawBug(ctx, bug) {
   ctx.fillStyle = fill;
   if (bug.retreating) ctx.globalAlpha = 0.5;
   ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
-  if (bug.isBloodBoss) {
+  if (bug.isTerminalBoss) {
+    // 终极 Boss 双重描边 + 紫色光晕
+    ctx.strokeStyle = G.colors.terminalBossStroke;
+    ctx.lineWidth = 4; ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,80,255,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(px, py, r + 6, 0, Math.PI * 2); ctx.stroke();
+    // 头顶标签
+    ctx.fillStyle = G.colors.terminalBossStroke;
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('终极 BOSS', px, py - r - 12);
+  } else if (bug.isBloodBoss) {
     ctx.strokeStyle = G.colors.bloodBossStroke;
     ctx.lineWidth = 3; ctx.stroke();
   } else if (bug.isHeavy) {
@@ -472,6 +507,45 @@ function drawHero(ctx) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('⚔', px, py - 22);
+  }
+}
+
+// v8: 探索宝藏渲染（金色宝藏箱 + 上下浮动 + 金色光晕）
+function drawTreasures(ctx) {
+  if (!S.treasures || S.treasures.length === 0) return;
+  for (const t of S.treasures) {
+    if (t.pickedUp) continue;
+    if (typeof isVisible === 'function' && !isVisible(t.x, t.y)) continue;   // 迷雾里看不见
+    const bob = Math.sin(t.bobPhase) * 4;
+    const { px, py } = cellToPixel(t.x, t.y);
+    const cy = py + bob;
+    // 金色光晕
+    const halo = 0.55 + 0.25 * Math.sin(t.bobPhase * 1.3);
+    ctx.fillStyle = `rgba(255,215,0,${0.18 * halo})`;
+    ctx.beginPath(); ctx.arc(px, cy, 16, 0, Math.PI * 2); ctx.fill();
+    // 阴影
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.beginPath(); ctx.ellipse(px, py + 11, 11, 3, 0, 0, Math.PI * 2); ctx.fill();
+    // 主体宝箱
+    ctx.fillStyle = G.colors.treasure || '#F39C12';
+    ctx.fillRect(px - 10, cy - 6, 20, 12);
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(px - 10, cy - 6, 20, 12);
+    // 盖
+    ctx.fillStyle = '#E67E22';
+    ctx.fillRect(px - 11, cy - 11, 22, 7);
+    ctx.strokeRect(px - 11, cy - 11, 22, 7);
+    // 锁
+    ctx.fillStyle = '#FFD700';
+    ctx.fillRect(px - 2, cy - 5, 4, 5);
+    ctx.lineWidth = 1;
+    // "宝"字
+    ctx.font = 'bold 9px sans-serif';
+    ctx.fillStyle = '#FFF';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('宝', px, cy + 1);
   }
 }
 

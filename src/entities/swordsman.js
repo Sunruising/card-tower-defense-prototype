@@ -1,11 +1,14 @@
 // entities/swordsman.js
 function makeSwordsman(barracks, x, y) {
   const cfg = G.swordsman;
+  // v8.1: 天赋树乘数（剑士 hp / 伤害）
+  const swHpMul = (S.mul && S.mul.swordsmanHpMul) || 1;
+  const swDmgMul = (S.mul && S.mul.swordsmanDamageMul) || 1;
   const sw = {
     id: nextId(), kind: 'swordsman',
     x: x, y: y,
-    hp: cfg.hp, maxHp: cfg.maxHp,
-    damage: cfg.damage,
+    hp: cfg.hp * swHpMul, maxHp: cfg.maxHp * swHpMul,
+    damage: cfg.damage * swDmgMul,
     speed: cfg.speed,
     attackSpeed: cfg.attackSpeed,
     attackRange: cfg.attackRange,

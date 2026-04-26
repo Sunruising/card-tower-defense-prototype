@@ -14,6 +14,12 @@ function spawnScout(sx, sy, tx, ty) {
     targetX: tx, targetY: ty,
     state: 'moving',
     lifeTimer: 0,                      // observing 状态下累加
+    // v8: 侦察兵可被攻击 + 吸引仇恨
+    hp: (G.aggro && G.aggro.scoutHp) || 8,
+    maxHp: (G.aggro && G.aggro.scoutMaxHp) || 8,
+    attractsAggro: !!(G.aggro && G.aggro.scoutAttractsAggro),
+    lastCombatAt: 0,
+    dead: false,
   };
   S.scouts.push(sc);
   return sc;
@@ -21,6 +27,9 @@ function spawnScout(sx, sy, tx, ty) {
 
 function updateScouts(dt) {
   if (!S.scouts || S.scouts.length === 0) return;
+  // v8.1: 天赋树乘数（侦察兵速度 / observing 持续时间）
+  const scoutSpeedMul = (S.mul && S.mul.scoutSpeedMul) || 1;
+  const scoutLifetimeBonus = (S.mul && S.mul.scoutLifetimeBonus) || 0;
   for (const sc of S.scouts) {
     if (sc.dead) continue;
 
@@ -37,12 +46,12 @@ function updateScouts(dt) {
         sc.x = sc.targetX;
         sc.y = sc.targetY;
       } else {
-        sc.x += (dx / d) * G.scout.speed * dt;
-        sc.y += (dy / d) * G.scout.speed * dt;
+        sc.x += (dx / d) * G.scout.speed * scoutSpeedMul * dt;
+        sc.y += (dy / d) * G.scout.speed * scoutSpeedMul * dt;
       }
     } else if (sc.state === 'observing') {
       sc.lifeTimer += dt;
-      if (sc.lifeTimer >= G.scout.lifetimeAfterArrive) {
+      if (sc.lifeTimer >= G.scout.lifetimeAfterArrive + scoutLifetimeBonus) {
         sc.dead = true;
       }
     }

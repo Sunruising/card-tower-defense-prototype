@@ -1,5 +1,11 @@
 // systems/phase.js —— 阶段切换（v6: 血月在 dusk 触发；dawn 结算）
 
+// v8: 判定第 X 天是否是血月日（基于 G.bloodMoonDays 数组，兼容旧 bloodMoonDay）
+function isBloodMoonDay(day) {
+  if (Array.isArray(G.bloodMoonDays)) return G.bloodMoonDays.includes(day);
+  return day === G.bloodMoonDay;
+}
+
 // 本地加权抽（避免依赖 cards.js）
 function _weightedPick(arr) {
   if (!Array.isArray(arr) || arr.length === 0) return null;
@@ -25,8 +31,11 @@ function updatePhase(dt) {
 
   // ===== dawn 即将结束 → 切到 day（新一天） =====
   if (S.phase === 'dawn') {
-    // v6 §8: 若刚结束血月夜（核心仍在），dawn 收尾时结算奖励
+    // v6 §8 / v8: 若刚结束血月夜（核心仍在），dawn 收尾时结算奖励 + 累加血月计数
     if (S.bloodMoonActive && S.core.hp > 0) {
+      // v8: 累加血月完成数
+      if (S.flags) S.flags.bloodMoonsCompleted = (S.flags.bloodMoonsCompleted || 0) + 1;
+
       const rare = _weightedPick(G.lootRarePool);
       let epic = null;
       if (Math.random() < G.bloodMoon.rewardEpicChance) {
@@ -40,8 +49,15 @@ function updatePhase(dt) {
       if (typeof showBloodMoonSurvived === 'function') showBloodMoonSurvived();
       // v6 §9: 血月之后启用虫流虚假化
       if (S.flags) S.flags.rallyEnabled = true;
-      // v7: 撑过血月夜 → 设 flag，待 overlay 关闭后由 checkWinLose 触发胜利
+      // 兼容字段（v8 不再用作胜利条件）
       if (S.flags) S.flags.bloodMoonSurvived = true;
+
+      // v8: 撑过 winRequiredBloodMoons 次 → 刷终极 Boss
+      if (S.flags
+          && S.flags.bloodMoonsCompleted >= (G.winRequiredBloodMoons || 2)
+          && !S.flags.terminalBossSpawned) {
+        if (typeof spawnTerminalBoss === 'function') spawnTerminalBoss();
+      }
     }
     // 血月清场
     if (S.bloodMoonActive) {
@@ -50,7 +66,20 @@ function updatePhase(dt) {
     }
 
     S.day += 1;
-    S.bloodMoonIn = Math.max(0, G.bloodMoonDay - S.day);
+    // v8.1: 资源涌泉天赋每天清晨给胶质
+    if (S.mul && S.mul.dailyGlueBonus) {
+      S.glue += S.mul.dailyGlueBonus;
+      if (typeof spawnFloatingText === 'function') {
+        spawnFloatingText(S.core.x, S.core.y, '+' + S.mul.dailyGlueBonus + ' 胶（涌泉）', 'loot');
+      }
+    }
+    // v8: bloodMoonIn 用于 UI 倒计时 —— 找下一个未到的血月日
+    if (Array.isArray(G.bloodMoonDays)) {
+      const next = G.bloodMoonDays.find(d => d >= S.day);
+      S.bloodMoonIn = next != null ? Math.max(0, next - S.day) : 0;
+    } else {
+      S.bloodMoonIn = Math.max(0, G.bloodMoonDay - S.day);
+    }
     clearAllGuardBugs();
     // v7.1 天赋点：每天清晨 +1
     if (typeof earnTalentPoints === 'function') earnTalentPoints('day', 1);
@@ -59,13 +88,20 @@ function updatePhase(dt) {
   S.phase = nextPhase;
   S.phaseTimer = G.phaseDurations[nextPhase];
 
-  // v6 §8: 进入 dusk 时若是第 5 天 → 标记血月，并播放预告
-  if (nextPhase === 'dusk' && S.day === G.bloodMoonDay && S.flags && !S.flags.bloodMoonAnnounced) {
-    S.flags.bloodMoonAnnounced = true;
-    S.bloodMoonActive = true;
-    S.bloodMoonTriggered = true;
-    if (S.flags.bloodBossSpawned === undefined) S.flags.bloodBossSpawned = false;
-    if (typeof showBloodMoonComing === 'function') showBloodMoonComing();
+  // v8: 进入 dusk 时若是血月日（数组判定），按日 keyed 字典防重复
+  if (nextPhase === 'dusk' && isBloodMoonDay(S.day) && S.flags) {
+    if (!S.flags.bloodMoonsAnnounced) S.flags.bloodMoonsAnnounced = {};
+    if (!S.flags.bloodMoonsAnnounced[S.day]) {
+      S.flags.bloodMoonsAnnounced[S.day] = true;
+      S.bloodMoonActive = true;
+      S.bloodMoonTriggered = true;
+      S.flags.bloodBossSpawned = false;
+      // 兼容旧 flag
+      S.flags.bloodMoonAnnounced = true;
+      if (typeof showBloodMoonComing === 'function') showBloodMoonComing();
+      // v8: 血月 dusk 智能补刷虫巢
+      if (typeof spawnBloodMoonNests === 'function') spawnBloodMoonNests();
+    }
   }
 
   // v6 §8: 进入 night 且血月激活 → 夜晚时长拉到 120s

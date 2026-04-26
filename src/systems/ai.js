@@ -7,6 +7,8 @@ function isDeadEntity(e) {
   if (e.kind === 'core') return S.core.hp <= 0;
   if (e.kind === 'nest') return !e.alive;
   if (e.kind === 'hero') return S.hero.state === 'dead';
+  // v8: 侦察兵带 hp，可被打死
+  if (e.kind === 'scout') return e.dead || (e.hp !== undefined && e.hp <= 0);
   if (e.hp !== undefined && e.hp <= 0) return true;
   return false;
 }
@@ -43,6 +45,22 @@ function findBlockerAt(cellX, cellY) {
 }
 
 function findBugRangeTarget(bug) {
+  // v8: 先扫描翻倍范围内是否有 attractsAggro 单位（视野建筑 / 侦察兵） —— 优先锁定
+  const aggroMul = (G.aggro && G.aggro.rangeMulWhenAggroVisible) || 2;
+  const aggroRange = bug.attackRange * aggroMul;
+  let aggroTarget = null, aggroD = Infinity;
+  const tryAggro = (t) => {
+    if (!t || isDeadEntity(t)) return;
+    if (t.targetable === false) return;
+    if (!t.attractsAggro) return;
+    const d = Math.hypot(t.x - bug.x, t.y - bug.y);
+    if (d <= aggroRange && d < aggroD) { aggroD = d; aggroTarget = t; }
+  };
+  for (const b of S.buildings) tryAggro(b);
+  if (S.scouts) for (const sc of S.scouts) tryAggro(sc);
+  if (aggroTarget) return aggroTarget;
+
+  // 现有逻辑：常规优先级（剑士 / 英雄 / 建筑 / 核心）
   let best = null, bestD = Infinity;
   const tryT = (t) => {
     if (!t || isDeadEntity(t)) return;
@@ -72,12 +90,17 @@ function findNearestBugInRange(x, y, range) {
 }
 
 // v5: 脱战回血
+// v8.1: 建筑脱战回血走 buildingRegenMul（防御性 —— 当前路径仅 hero / swordsman 调用）
 function applyOutOfCombatRegen(unit, dt) {
   if (!unit) return;
   if (unit.hp >= unit.maxHp) return;
   const now = performance.now();
   if (now - (unit.lastCombatAt || 0) < G.combat.outOfCombatDelay * 1000) return;
-  unit.hp = Math.min(unit.maxHp, unit.hp + G.combat.regenPerSec * dt);
+  let regen = G.combat.regenPerSec;
+  if (unit.kind === 'building') {
+    regen *= ((S.mul && S.mul.buildingRegenMul) || 1);
+  }
+  unit.hp = Math.min(unit.maxHp, unit.hp + regen * dt);
 }
 
 // v6 §3: 减速地刺触发 —— 每帧扫描，扣使用次数（同虫只扣一次）+ 续期 slow
@@ -561,7 +584,8 @@ function updateBuildings(dt) {
     if (b.type === 'collector') {
       b.produceTimer -= dt;
       if (b.produceTimer <= 0) {
-        S.glue += G.collector.produceAmount;
+        // v8.1: collectorProduceBonus 累加到产出
+        S.glue += G.collector.produceAmount + ((S.mul && S.mul.collectorProduceBonus) || 0);
         b.produceTimer = G.collector.produceInterval;
       }
     } else if (b.type === 'reinforced_collector') {
@@ -571,30 +595,37 @@ function updateBuildings(dt) {
       } else {
         b.produceTimer -= dt;
         if (b.produceTimer <= 0) {
-          S.glue += G.reinforcedCollector.produceAmount;
+          // v8.1: collectorProduceBonus 同步加到强化采集器
+          S.glue += G.reinforcedCollector.produceAmount + ((S.mul && S.mul.collectorProduceBonus) || 0);
           b.produceTimer = G.reinforcedCollector.produceInterval;
         }
       }
     } else if (b.type === 'tower') {
       b.attackCd = Math.max(0, b.attackCd - dt);
-      const enemy = findNearestBugInRange(b.x, b.y, G.tower.attackRange);
+      // v8.1: towerRangeBonus / towerDamageMul / towerAttackSpeedMul
+      const towerRange = G.tower.attackRange + ((S.mul && S.mul.towerRangeBonus) || 0);
+      const enemy = findNearestBugInRange(b.x, b.y, towerRange);
       if (enemy && b.attackCd <= 0) {
-        dealDamage(b, enemy, G.tower.damage);
+        dealDamage(b, enemy, G.tower.damage * ((S.mul && S.mul.towerDamageMul) || 1));
         addAttackFx(b, enemy, 'ally');
-        b.attackCd = 1 / G.tower.attackSpeed;
+        b.attackCd = 1 / (G.tower.attackSpeed * ((S.mul && S.mul.towerAttackSpeedMul) || 1));
       }
     } else if (b.type === 'mage_tower') {
       // v5: AOE 攻击
       b.attackCd = Math.max(0, b.attackCd - dt);
-      const enemy = findNearestBugInRange(b.x, b.y, G.mageTower.attackRange);
+      // v8.1: 法师塔射程同样吃 towerRangeBonus；splash / damage 走专属 mul
+      const mageRange = G.mageTower.attackRange + ((S.mul && S.mul.towerRangeBonus) || 0);
+      const enemy = findNearestBugInRange(b.x, b.y, mageRange);
       if (enemy && b.attackCd <= 0) {
         addAttackFx(b, enemy, 'ally');
-        addMageBlastFx(enemy.x, enemy.y, G.mageTower.splashRadius);
+        const splashR = G.mageTower.splashRadius * ((S.mul && S.mul.mageSplashMul) || 1);
+        const dmg = G.mageTower.damage * ((S.mul && S.mul.mageDamageMul) || 1);
+        addMageBlastFx(enemy.x, enemy.y, splashR);
         for (const bug of S.bugs) {
           if (bug.dead) continue;
           const d = Math.hypot(bug.x - enemy.x, bug.y - enemy.y);
-          if (d <= G.mageTower.splashRadius) {
-            bug.hp -= G.mageTower.damage;
+          if (d <= splashR) {
+            bug.hp -= dmg;
             b.lastCombatAt = performance.now();
             bug.lastCombatAt = performance.now();
             if (bug.hp <= 0) killBug(bug);

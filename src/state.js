@@ -13,6 +13,7 @@ function resetState() {
     phase: cfg.initial.phase,
     phaseTimer: cfg.phaseDurations[cfg.initial.phase],
     paused: false,
+    timeScale: 1,                       // v8.2 时间加倍倍数
     glue: cfg.initial.glue,
     tokens: cfg.initial.tokens,
     bloodMoonIn: Math.max(0, cfg.bloodMoonDay - cfg.initial.day),
@@ -64,6 +65,7 @@ function resetState() {
     swordsmen: [],
     scouts: [],                       // v5: 侦察兵单位
     gifts: [],
+    treasures: [],                    // v8: 探索奖励点
 
     // v6: hand 改为 stack 数组 [{ cardId, count }]
     hand: [],
@@ -71,10 +73,15 @@ function resetState() {
 
     // v6: 跨阶段 flags（由 phase.js / cards.js 读写）
     flags: {
-      bloodMoonAnnounced: false,
+      bloodMoonAnnounced: false,        // v6: 第 1 次血月预告
       rallyEnabled: false,
       rallyChangeAnnounced: false,
-      bloodMoonSurvived: false,         // v7: 撑过血月夜 → checkWinLose 触发胜利
+      bloodMoonSurvived: false,         // v7: 撑过血月夜（保留 flag，但 v8 不再用作胜利）
+      // v8 新增
+      bloodMoonsCompleted: 0,           // 已完成的血月次数
+      bloodMoonsAnnounced: {},          // { day: bool } 防止同一日重复 announce
+      terminalBossSpawned: false,
+      terminalBossKilled: false,        // v8: 击杀 → checkWinLose 触发胜利
     },
 
     placementMode: null,
@@ -124,6 +131,9 @@ function resetState() {
   // v7.1: 天赋树 state 初始化 + 应用任何已解锁效果（重启后 unlocked=[] 等于不应用）
   S.talents = { points: 0, unlocked: [], killCounter: 0 };
   if (typeof applyAllTalentEffects === 'function') applyAllTalentEffects();
+
+  // v8: 撒探索奖励点（在虫巢生成后避免位置冲突）
+  if (typeof generateInitialTreasures === 'function') generateInitialTreasures();
 }
 
 function makeInitialNest(n) {
