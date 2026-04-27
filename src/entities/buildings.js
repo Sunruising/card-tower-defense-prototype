@@ -53,9 +53,57 @@ function makeBuilding(type, x, y, opts) {
     // v8: 视野单位吸引仇恨
     b.attractsAggro = true;
   }
+  // v8.3: 升级等级初始化为 0
+  b.upgradeLevel = 0;
   S.buildings.push(b);
   return b;
 }
+
+// v8.3: 升级建筑（消耗胶质，按 G.buildingUpgrades[type] 应用增量）
+function upgradeBuilding(b) {
+  if (!b || b.dead) return false;
+  const ladder = G.buildingUpgrades && G.buildingUpgrades[b.type];
+  if (!ladder) { if (typeof showMessage === 'function') showMessage('该建筑无升级'); return false; }
+  const lvl = b.upgradeLevel || 0;
+  if (lvl >= ladder.length) { if (typeof showMessage === 'function') showMessage('已满级'); return false; }
+  const up = ladder[lvl];
+  if (S.glue < up.cost) { if (typeof showMessage === 'function') showMessage('胶质不足（需 ' + up.cost + '）'); return false; }
+  S.glue -= up.cost;
+  b.upgradeLevel = lvl + 1;
+  // 应用效果
+  if (up.hpAdd) {
+    b.maxHp += up.hpAdd;
+    b.hp += up.hpAdd;     // 升级时回这部分血
+  }
+  if (up.damageMul) b.damageMul = (b.damageMul || 1) * up.damageMul;
+  if (up.attackSpeedMul) b.attackSpeedMul = (b.attackSpeedMul || 1) * up.attackSpeedMul;
+  if (up.rangeAdd) b.rangeBonus = (b.rangeBonus || 0) + up.rangeAdd;
+  if (up.splashMul) b.splashMul = (b.splashMul || 1) * up.splashMul;
+  if (up.produceAdd) b.produceBonus = (b.produceBonus || 0) + up.produceAdd;
+  if (up.intervalMul) b.intervalMul = (b.intervalMul || 1) * up.intervalMul;
+  if (up.radiusAdd && b.type === 'watchtower' && typeof revealPermanent === 'function') {
+    revealPermanent(b.x, b.y, (G.fog.watchtowerRadius + (S.mul && S.mul.watchtowerRadiusBonus || 0)) + b.radiusBonus + up.radiusAdd, 'watchtower#' + b.id);
+    b.radiusBonus = (b.radiusBonus || 0) + up.radiusAdd;
+  }
+  if (up.swordsmanHpMul) b.swordsmanHpMul = (b.swordsmanHpMul || 1) * up.swordsmanHpMul;
+  if (up.swordsmanDmgMul) b.swordsmanDmgMul = (b.swordsmanDmgMul || 1) * up.swordsmanDmgMul;
+  if (typeof showMessage === 'function') showMessage('升级成功 → Lv.' + b.upgradeLevel);
+  if (typeof spawnFloatingText === 'function') spawnFloatingText(b.x, b.y, '升级 Lv.' + b.upgradeLevel, 'loot');
+  return true;
+}
+
+// v8.3: 查询升级信息
+function getUpgradeInfo(b) {
+  if (!b) return null;
+  const ladder = G.buildingUpgrades && G.buildingUpgrades[b.type];
+  if (!ladder) return null;
+  const lvl = b.upgradeLevel || 0;
+  const next = ladder[lvl];
+  return { level: lvl, maxLevel: ladder.length, next };
+}
+
+window.upgradeBuilding = upgradeBuilding;
+window.getUpgradeInfo = getUpgradeInfo;
 
 // v7.1: 由 placement 子流程或外部调用以更改方向
 function setSearchlightDirection(b, dir) {

@@ -12,7 +12,76 @@ function drawUI(ctx) {
   drawCardOverlay(ctx);
   drawTasksOverlay(ctx);     // v7 新增
   drawRaidPreview(ctx);      // v7: 来袭预警卡
+  drawBuildingUpgradePanel(ctx);  // v8.3: 选中建筑升级面板
 }
+
+// v8.3: 选中建筑后在屏幕右下弹一个升级面板
+function drawBuildingUpgradePanel(ctx) {
+  if (!S.selectedBuildingId) return;
+  const b = S.buildings.find(bb => !bb.dead && bb.id === S.selectedBuildingId);
+  if (!b) return;
+  const info = (typeof getUpgradeInfo === 'function') ? getUpgradeInfo(b) : null;
+  if (!info) return;
+  const w = 280, h = 90;
+  const x = G.canvasWidth - w - 12;
+  const y = G.mapTop + G.mapPixelHeight - h - 12;
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#FFD54F';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x, y, w, h);
+  const typeLabel = ({ collector: '采胶器', reinforced_collector: '加固采胶器', tower: '箭塔', mage_tower: '法师塔', barracks: '剑士营', watchtower: '瞭望塔', searchlight: '探照灯' })[b.type] || b.type;
+  ctx.fillStyle = '#FFF';
+  ctx.font = 'bold 13px sans-serif';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(typeLabel + ' Lv.' + info.level + '/' + info.maxLevel, x + 10, y + 8);
+  const btn = buildingUpgradeBtnRect();
+  if (info.next) {
+    const canAfford = S.glue >= info.next.cost;
+    ctx.fillStyle = canAfford ? '#27AE60' : '#444';
+    ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+    ctx.strokeStyle = '#FFF';
+    ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`升级 (${info.next.cost} 胶)`, btn.x + btn.w / 2, btn.y + btn.h / 2);
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#CCC';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    const effects = [];
+    const u = info.next;
+    if (u.hpAdd) effects.push(`+${u.hpAdd} hp`);
+    if (u.damageMul) effects.push(`×${u.damageMul} 伤害`);
+    if (u.attackSpeedMul) effects.push(`×${u.attackSpeedMul} 攻速`);
+    if (u.rangeAdd) effects.push(`+${u.rangeAdd} 射程`);
+    if (u.splashMul) effects.push(`×${u.splashMul} 范围`);
+    if (u.produceAdd) effects.push(`+${u.produceAdd} 产出`);
+    if (u.intervalMul) effects.push(`×${u.intervalMul} 频率`);
+    if (u.radiusAdd) effects.push(`+${u.radiusAdd} 半径`);
+    if (u.swordsmanHpMul) effects.push(`剑士 hp ×${u.swordsmanHpMul}`);
+    if (u.swordsmanDmgMul) effects.push(`剑士伤害 ×${u.swordsmanDmgMul}`);
+    ctx.fillText(effects.join(' / '), x + 10, y + 30);
+  } else {
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#FFD54F';
+    ctx.fillText('已达最高等级', x + 10, y + 32);
+  }
+  ctx.fillStyle = '#666';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'top';
+  ctx.fillText('右键关闭', x + w - 8, y + 8);
+}
+
+function buildingUpgradeBtnRect() {
+  const w = 140, h = 30;
+  return { x: G.canvasWidth - w - 24, y: G.mapTop + G.mapPixelHeight - 50, w, h };
+}
+window.buildingUpgradeBtnRect = buildingUpgradeBtnRect;
 
 function drawTopBar(ctx) {
   ctx.fillStyle = '#0D0D0D';

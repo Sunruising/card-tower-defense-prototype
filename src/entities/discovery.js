@@ -308,11 +308,47 @@ function onClickDiscovery(d) {
   if (d.type === 'resource' || d.type === 'chest' || d.type === 'relic') {
     pickupDiscovery(d);
   } else if (d.type === 'wild_camp') {
-    if (typeof showMessage === 'function') showMessage('靠近野怪据点会自动开战');
+    // v8.3: 点击野怪据点 → 派英雄过去（与左键地图同效）
+    if (d.defeated) {
+      if (typeof showMessage === 'function') showMessage('据点已击破，' + Math.max(0, (d.respawnAtDay || 0) - S.day) + ' 天后重生');
+      return;
+    }
+    if (typeof heroStartFreeMove === 'function' && heroAlive()) {
+      heroStartFreeMove(d.x, d.y);
+      if (typeof showMessage === 'function') showMessage('英雄前往野怪据点 → 自动开战');
+    }
   } else if (d.type === 'sleeping_nest') {
-    if (typeof showMessage === 'function') showMessage('沉睡虫巢需要主动出征');
+    if (typeof heroStartFreeMove === 'function' && heroAlive()) {
+      heroStartFreeMove(d.x, d.y);
+      if (typeof showMessage === 'function') showMessage('英雄前往沉睡虫巢 → 抵达后击破');
+    }
   }
 }
+
+// v8.3: 玩家英雄抵达沉睡虫巢 1 格内 → 击破获得奖励
+function checkSleepingNestDefeat() {
+  if (!S.discoveries || !heroAlive()) return;
+  for (const d of S.discoveries) {
+    if (d.type !== 'sleeping_nest' || d.pickedUp || d.awakened) continue;
+    if (Math.hypot(d.x - S.hero.x, d.y - S.hero.y) <= 1.2) {
+      const reward = G.discoveryPoints.sleepingNest && G.discoveryPoints.sleepingNest.reward;
+      if (reward) {
+        if (reward.lootGift && typeof spawnGift === 'function') {
+          spawnGift({ x: d.x, y: d.y, type: reward.lootGift });
+        }
+        if (reward.card === 'special') {
+          const sp = G.specialCards || [];
+          const cardId = sp[Math.floor(Math.random() * sp.length)];
+          if (cardId && typeof addCardToHand === 'function') addCardToHand(cardId);
+          if (typeof showMessage === 'function') showMessage('沉睡虫巢被击破！获得特殊卡');
+        }
+      }
+      d.pickedUp = true;
+      if (typeof spawnFloatingText === 'function') spawnFloatingText(d.x, d.y, '沉睡虫巢击破!', 'kill-big');
+    }
+  }
+}
+window.checkSleepingNestDefeat = checkSleepingNestDefeat;
 
 window.generateInitialDiscoveries = generateInitialDiscoveries;
 window.updateDiscoveries = updateDiscoveries;

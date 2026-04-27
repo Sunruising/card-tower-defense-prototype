@@ -385,6 +385,16 @@ function bindInput(canvas) {
       return;
     }
 
+    // v8.3: 选中建筑后，先检查升级按钮（位于地图区右下，会优先于地图点击）
+    if (S.selectedBuildingId && typeof buildingUpgradeBtnRect === 'function') {
+      const btn = buildingUpgradeBtnRect();
+      if (pointInRect(mx, my, btn)) {
+        const b = S.buildings.find(bb => !bb.dead && bb.id === S.selectedBuildingId);
+        if (b && typeof upgradeBuilding === 'function') upgradeBuilding(b);
+        return;
+      }
+    }
+
     if (isOverMap(mx, my)) {
       const c = screenToCell(mx, my);
 

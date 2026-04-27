@@ -40,8 +40,8 @@ function updateSearchlights(dt) {
   if (!S.buildings) return;
   for (const b of S.buildings) {
     if (b.dead || b.type !== 'searchlight') continue;
-    // v8.1: 灯火通明天赋 → 扫描间隔 ×searchlightIntervalMul（默认 1，解锁后 0.7）
-    const intervalMul = (S.mul && S.mul.searchlightIntervalMul) || 1;
+    // v8.1 天赋 + v8.3 升级 intervalMul
+    const intervalMul = ((S.mul && S.mul.searchlightIntervalMul) || 1) * (b.intervalMul || 1);
     const interval = G.searchlight.scanInterval * intervalMul;
     if (b.scanTimer === undefined) b.scanTimer = interval;
     b.scanTimer -= dt;

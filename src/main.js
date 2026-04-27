@@ -77,6 +77,7 @@ function stepWorld(dt) {
     if (typeof updateTreasures === 'function') updateTreasures(dt);   // v8: 探索奖励拾取
     if (typeof updateDiscoveries === 'function') updateDiscoveries(dt);  // v7: 5 类发现点
     if (typeof checkWildCampDefeat === 'function') checkWildCampDefeat(); // v7: 野怪据点击败检查
+    if (typeof checkSleepingNestDefeat === 'function') checkSleepingNestDefeat(); // v8.3: 沉睡虫巢击破
     if (typeof updateRaidPreview === 'function') updateRaidPreview(dt);  // v7: 来袭预警倒数
     if (typeof updateTasks === 'function') updateTasks(dt);            // v7: 任务系统轮询型 trigger
     updateFog(dt);                // v5: 迷雾

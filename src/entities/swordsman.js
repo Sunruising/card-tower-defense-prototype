@@ -1,9 +1,9 @@
 // entities/swordsman.js
 function makeSwordsman(barracks, x, y) {
   const cfg = G.swordsman;
-  // v8.1: 天赋树乘数（剑士 hp / 伤害）
-  const swHpMul = (S.mul && S.mul.swordsmanHpMul) || 1;
-  const swDmgMul = (S.mul && S.mul.swordsmanDamageMul) || 1;
+  // v8.1 天赋乘数 × v8.3 兵营升级乘数
+  const swHpMul = ((S.mul && S.mul.swordsmanHpMul) || 1) * ((barracks && barracks.swordsmanHpMul) || 1);
+  const swDmgMul = ((S.mul && S.mul.swordsmanDamageMul) || 1) * ((barracks && barracks.swordsmanDmgMul) || 1);
   const sw = {
     id: nextId(), kind: 'swordsman',
     x: x, y: y,

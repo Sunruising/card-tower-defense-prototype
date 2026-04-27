@@ -480,6 +480,16 @@ function updateHero(dt) {
     const dx = tx - h.x;
     const dy = ty - h.y;
     const d = Math.hypot(dx, dy);
+    // v8.3: 路上靠近野怪据点 → 触发战斗
+    if (S.discoveries) {
+      for (const dp of S.discoveries) {
+        if (dp.pickedUp || dp.type !== 'wild_camp' || dp.defeated || dp.bugsSpawned) continue;
+        if (Math.hypot(dp.x - h.x, dp.y - h.y) <= 1.5) {
+          if (typeof attackWildCamp === 'function') attackWildCamp(dp, h);
+          if (typeof showMessage === 'function') showMessage('遭遇野怪据点！');
+        }
+      }
+    }
     // 路上遇到敌人自动战斗
     const enemy = findNearestBugInRange(h.x, h.y, G.hero.visionRadius + (S.hero.visionRadiusBonus || 0));
     if (enemy) {
@@ -659,7 +669,7 @@ function updateBuildings(dt) {
       b.produceTimer -= dt;
       if (b.produceTimer <= 0) {
         // v8.1: collectorProduceBonus 累加到产出
-        S.glue += G.collector.produceAmount + ((S.mul && S.mul.collectorProduceBonus) || 0);
+        S.glue += G.collector.produceAmount + ((S.mul && S.mul.collectorProduceBonus) || 0) + (b.produceBonus || 0);
         b.produceTimer = G.collector.produceInterval;
       }
     } else if (b.type === 'reinforced_collector') {
@@ -670,30 +680,30 @@ function updateBuildings(dt) {
         b.produceTimer -= dt;
         if (b.produceTimer <= 0) {
           // v8.1: collectorProduceBonus 同步加到强化采集器
-          S.glue += G.reinforcedCollector.produceAmount + ((S.mul && S.mul.collectorProduceBonus) || 0);
+          S.glue += G.reinforcedCollector.produceAmount + ((S.mul && S.mul.collectorProduceBonus) || 0) + (b.produceBonus || 0);
           b.produceTimer = G.reinforcedCollector.produceInterval;
         }
       }
     } else if (b.type === 'tower') {
       b.attackCd = Math.max(0, b.attackCd - dt);
-      // v8.1: towerRangeBonus / towerDamageMul / towerAttackSpeedMul
-      const towerRange = G.tower.attackRange + ((S.mul && S.mul.towerRangeBonus) || 0);
+      // v8.3: 升级 rangeBonus / damageMul / attackSpeedMul 叠加到 v8.1 的天赋乘数
+      const towerRange = G.tower.attackRange + ((S.mul && S.mul.towerRangeBonus) || 0) + (b.rangeBonus || 0);
       const enemy = findNearestBugInRange(b.x, b.y, towerRange);
       if (enemy && b.attackCd <= 0) {
-        dealDamage(b, enemy, G.tower.damage * ((S.mul && S.mul.towerDamageMul) || 1));
+        const dmg = G.tower.damage * ((S.mul && S.mul.towerDamageMul) || 1) * (b.damageMul || 1);
+        dealDamage(b, enemy, dmg);
         addAttackFx(b, enemy, 'ally');
-        b.attackCd = 1 / (G.tower.attackSpeed * ((S.mul && S.mul.towerAttackSpeedMul) || 1));
+        const aspd = G.tower.attackSpeed * ((S.mul && S.mul.towerAttackSpeedMul) || 1) * (b.attackSpeedMul || 1);
+        b.attackCd = 1 / aspd;
       }
     } else if (b.type === 'mage_tower') {
-      // v5: AOE 攻击
       b.attackCd = Math.max(0, b.attackCd - dt);
-      // v8.1: 法师塔射程同样吃 towerRangeBonus；splash / damage 走专属 mul
-      const mageRange = G.mageTower.attackRange + ((S.mul && S.mul.towerRangeBonus) || 0);
+      const mageRange = G.mageTower.attackRange + ((S.mul && S.mul.towerRangeBonus) || 0) + (b.rangeBonus || 0);
       const enemy = findNearestBugInRange(b.x, b.y, mageRange);
       if (enemy && b.attackCd <= 0) {
         addAttackFx(b, enemy, 'ally');
-        const splashR = G.mageTower.splashRadius * ((S.mul && S.mul.mageSplashMul) || 1);
-        const dmg = G.mageTower.damage * ((S.mul && S.mul.mageDamageMul) || 1);
+        const splashR = G.mageTower.splashRadius * ((S.mul && S.mul.mageSplashMul) || 1) * (b.splashMul || 1);
+        const dmg = G.mageTower.damage * ((S.mul && S.mul.mageDamageMul) || 1) * (b.damageMul || 1);
         addMageBlastFx(enemy.x, enemy.y, splashR);
         for (const bug of S.bugs) {
           if (bug.dead) continue;
@@ -705,7 +715,7 @@ function updateBuildings(dt) {
             if (bug.hp <= 0) killBug(bug);
           }
         }
-        b.attackCd = 1 / G.mageTower.attackSpeed;
+        b.attackCd = 1 / (G.mageTower.attackSpeed * (b.attackSpeedMul || 1));
       }
     } else if (b.type === 'slow_spike') {
       // 被动 effect 由 applySlowSpikeEffects 处理

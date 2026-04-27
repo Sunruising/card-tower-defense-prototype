@@ -140,7 +140,7 @@ window.G = {
   // ----- 初始（v7: 起始胶 40→30）-----
   initial: {
     day: 1, phase: 'day',
-    glue: 30, tokens: 5, gems: 0,
+    glue: 50, tokens: 5, gems: 0,           // v8.3: 30→50（开局更宽松）
     tokenCap: 10, tokenPerDay: 1,
   },
 
@@ -201,16 +201,17 @@ window.G = {
   // v7 虫巢生成（完全随机 + 距离约束）
   nestGeneration: {
     initialCount: 2,
-    nightlyEnabled: true,                     // v7: 每晚刷一个新虫巢
-    nightlyMaxNests: 8,                       // 同时存在最多 8 个
-    nightlyArmoredChance: 0.25,               // 每晚新巢 25% 几率为钢壳
-    nightlyMinDistanceFromCore: 4,
+    nightlyEnabled: true,
+    nightlyMaxNests: 8,
+    nightlyArmoredChance: 0.25,
+    nightlyMinDistanceFromCore: 6,            // v8.3: 4→6（初始虫巢离核心更远）
     nightlyMinDistanceFromOtherNest: 4,
     nightlyMinDistanceFromBuilding: 2,
   },
 
   nest: {
-    hp: 80, maxHp: 80,
+    hp: 60, maxHp: 60,                        // v8.3: 80→60（初始虫巢更脆，方便英雄打）
+    _v7_hp_was: 80,
     dayDamageMul: 0.5,
     dawnDamageMul: 1.5,
     spawnIntervals: { day: 12, dusk: 6, night: 8, dawn: Infinity },
@@ -431,15 +432,15 @@ window.G = {
   recall: { },
 
   // ----- 血月（v8: 多次触发 + 加压）-----
-  bloodMoonDay: 3,                       // 旧字段（第一次血月日，兼容）
-  bloodMoonDays: [3, 6, 9],              // v8: 血月触发日数组
-  winRequiredBloodMoons: 2,              // v8: 撑过 2 次后 D6 dawn 刷终极 Boss
+  bloodMoonDay: 5,                       // v8.3: 3→5（首次血月推后）
+  bloodMoonDays: [5, 8, 11],             // v8.3: [3,6,9]→[5,8,11]
+  winRequiredBloodMoons: 2,              // 撑过 2 次后下一个 dawn 刷终极 Boss
   bloodMoon: {
     triggerPhase: 'dusk',
-    nightDuration: 95,                   // v8: 120 → 95s（配合整体缩短）
-    bugCapMul: 2.2,                      // v8: ×2 → ×2.2
-    bugHpMul: 1.4,                       // v8: +30% → +40%
-    bugDamageMul: 1.3,                   // v8: +20% → +30%
+    nightDuration: 80,                   // v8.3: 95→80
+    bugCapMul: 1.8,                      // v8.3: 2.2→1.8（首次血月不爆炸）
+    bugHpMul: 1.25,                      // v8.3: 1.4→1.25
+    bugDamageMul: 1.2,                   // v8.3: 1.3→1.2
     bossNestIndex: 0,                    // v8: 改为第一个虫巢（避免没第二个）
     rewardRareCount: 1,
     rewardEpicChance: 0.35,
@@ -547,6 +548,39 @@ window.G = {
   // ----- 镜头 -----
   camera: {
     pulsePeriod: 1.4,
+  },
+
+  // ----- v8.3 防御塔/采胶器升级 -----
+  // 每个建筑最多 2 级升级（lvl 0 = 默认；lvl 1/2 = 升级）
+  buildingUpgrades: {
+    tower: [
+      { cost: 30, hpAdd: 20, damageMul: 1.5, attackSpeedMul: 1.0, rangeAdd: 0 },
+      { cost: 60, hpAdd: 30, damageMul: 1.5, attackSpeedMul: 1.3, rangeAdd: 0.5 },
+    ],
+    mage_tower: [
+      { cost: 50, hpAdd: 15, damageMul: 1.4, attackSpeedMul: 1.0, splashMul: 1.2 },
+      { cost: 90, hpAdd: 25, damageMul: 1.4, attackSpeedMul: 1.3, splashMul: 1.3 },
+    ],
+    collector: [
+      { cost: 25, hpAdd: 15, produceAdd: 1 },
+      { cost: 50, hpAdd: 20, produceAdd: 1 },
+    ],
+    reinforced_collector: [
+      { cost: 40, hpAdd: 20, produceAdd: 1 },
+      { cost: 80, hpAdd: 30, produceAdd: 2 },
+    ],
+    barracks: [
+      { cost: 40, hpAdd: 30, swordsmanHpMul: 1.3, swordsmanDmgMul: 1.2 },
+      { cost: 80, hpAdd: 50, swordsmanHpMul: 1.5, swordsmanDmgMul: 1.5 },
+    ],
+    watchtower: [
+      { cost: 25, hpAdd: 15, radiusAdd: 1 },
+      { cost: 50, hpAdd: 20, radiusAdd: 1 },
+    ],
+    searchlight: [
+      { cost: 25, hpAdd: 15, intervalMul: 0.7 },          // 1.5s → 1.05s
+      { cost: 50, hpAdd: 20, intervalMul: 0.5 },          // → 0.75s
+    ],
   },
 
   // ----- 战斗与脱战回血（普通单位） -----
@@ -700,7 +734,7 @@ window.G = {
   talents: {
     pointsPerDay: 1,                    // 每天清晨给 1 点
     pointsPerNestKill: 1,               // 每杀 1 个虫巢 +1 点
-    pointsPerKills: { every: 5, points: 1 },   // v8.1: 每 5 杀 +1（10→5，配合扩树）
+    pointsPerKills: { every: 15, points: 1 },  // v8.3: 5→15（节奏减半再减半）
     categories: [
       { id: 'hero',       label: '英雄' },
       { id: 'common',     label: '公共' },
