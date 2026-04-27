@@ -107,8 +107,8 @@ window.G = {
     giftStroke: '#FFD700',
     gemText: '#9B59B6',
     cameraRing: 'rgba(255,255,255,0.85)',
-    fogged: 'rgba(0,0,0,0.78)',
-    tempFog: 'rgba(0,0,0,0.30)',
+    fogged: 'rgba(2,2,8,0.92)',          // v8.4: 加深到几乎全黑（与四阶段彩色底色对比强）
+    tempFog: 'rgba(20,15,40,0.50)',      // v8.4: 紫黑半透明（仍能看见但明显比 visible 暗）
     visionRing: 'rgba(255,255,255,0.05)',
     selectTarget: 'rgba(255,235,80,0.6)',
     rallyMark: 'rgba(255,160,40,0.85)',  // v6: 虫子 rallyTarget 标记色

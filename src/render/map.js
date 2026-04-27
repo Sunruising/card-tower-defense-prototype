@@ -4,19 +4,39 @@ function cellToPixel(x, y) {
 }
 
 function drawMap(ctx) {
-  ctx.fillStyle = G.colors.bg;
+  // v8.4: 4 阶段底色明显区分（白天暖橙 / 傍晚紫红 / 夜晚深蓝 / 黎明青紫）
+  // 用整体替换底色（不是叠加）—— 直接 fillStyle 是阶段色而非 G.colors.bg
+  let phaseBg;
+  if (S.phase === 'day') phaseBg = '#3a3128';            // 暖棕色（暖光时段）
+  else if (S.phase === 'dusk') phaseBg = '#3a2030';      // 紫红
+  else if (S.phase === 'night') phaseBg = '#0d1530';     // 深蓝夜
+  else if (S.phase === 'dawn') phaseBg = '#1c1840';      // 青紫黎明
+  else phaseBg = G.colors.bg;
+  ctx.fillStyle = phaseBg;
   ctx.fillRect(0, G.mapTop, G.canvasWidth, G.mapPixelHeight);
 
-  if (S.phase === 'dawn') {
-    ctx.fillStyle = 'rgba(180,120,220,0.05)';
+  // 阶段着色叠加层（不透明度更高，强化感受）
+  if (S.phase === 'day') {
+    ctx.fillStyle = 'rgba(255,200,120,0.06)';            // 暖光
+    ctx.fillRect(0, G.mapTop, G.canvasWidth, G.mapPixelHeight);
+  } else if (S.phase === 'dusk') {
+    ctx.fillStyle = 'rgba(255,80,90,0.10)';              // 落日红
     ctx.fillRect(0, G.mapTop, G.canvasWidth, G.mapPixelHeight);
   } else if (S.phase === 'night') {
-    ctx.fillStyle = 'rgba(20,40,80,0.08)';
+    ctx.fillStyle = 'rgba(30,60,120,0.18)';              // 蓝夜（×2 浓度）
+    ctx.fillRect(0, G.mapTop, G.canvasWidth, G.mapPixelHeight);
+  } else if (S.phase === 'dawn') {
+    ctx.fillStyle = 'rgba(180,140,230,0.12)';            // 紫色黎明
     ctx.fillRect(0, G.mapTop, G.canvasWidth, G.mapPixelHeight);
   }
 
-  // 网格
-  ctx.strokeStyle = G.colors.grid;
+  // 网格（v8.4: 按阶段调亮度，避免被深色底色吞掉）
+  let gridColor = G.colors.grid;
+  if (S.phase === 'day') gridColor = 'rgba(255,255,255,0.10)';
+  else if (S.phase === 'dusk') gridColor = 'rgba(255,200,200,0.12)';
+  else if (S.phase === 'night') gridColor = 'rgba(150,180,255,0.10)';
+  else if (S.phase === 'dawn') gridColor = 'rgba(220,180,255,0.12)';
+  ctx.strokeStyle = gridColor;
   ctx.lineWidth = 1;
   for (let x = 0; x <= G.mapWidth; x++) {
     const px = x * G.cellSize;
