@@ -39,10 +39,16 @@ function resetState() {
       lastCombatAt: 0,                // v5
     },
 
+    // v7: 出征令牌可被遗迹永久 +1 上限
+    tokenCapBonus: 0,
+
     hero: {
       id: nextId(), kind: 'hero',
       x: cfg.hero.x, y: cfg.hero.y,
       homeX: cfg.hero.x, homeY: cfg.hero.y,
+      mode: 'patrol',                   // v7: patrol / free / march / fight / return（与 state 平行）
+      freeMoveTarget: null,             // v7: { x, y } 自由移动目标格
+      exploreState: false,              // v7: 是否在探索状态（基地 3×3 外）
       hp: cfg.hero.hp, maxHp: cfg.hero.maxHp,
       damage: cfg.hero.damage,
       attackRange: cfg.hero.attackRange,
@@ -65,7 +71,9 @@ function resetState() {
     swordsmen: [],
     scouts: [],                       // v5: 侦察兵单位
     gifts: [],
-    treasures: [],                    // v8: 探索奖励点
+    treasures: [],                    // v8: 探索奖励点（保留兼容；v7 改用 discoveries）
+    discoveries: [],                  // v7: 5 类发现点
+    explosions: [],                   // v7: 自爆虫触发的爆炸特效
 
     // v6: hand 改为 stack 数组 [{ cardId, count }]
     hand: [],
@@ -78,10 +86,15 @@ function resetState() {
       rallyChangeAnnounced: false,
       bloodMoonSurvived: false,         // v7: 撑过血月夜（保留 flag，但 v8 不再用作胜利）
       // v8 新增
-      bloodMoonsCompleted: 0,           // 已完成的血月次数
-      bloodMoonsAnnounced: {},          // { day: bool } 防止同一日重复 announce
+      bloodMoonsCompleted: 0,
+      bloodMoonsAnnounced: {},
       terminalBossSpawned: false,
-      terminalBossKilled: false,        // v8: 击杀 → checkWinLose 触发胜利
+      terminalBossKilled: false,
+      // v7 新增
+      freeStartingTowerSpawned: false,
+      raidPreviewShown: {},             // { day: bool }
+      tutorialEnded: false,
+      tutorialMessageShown: false,
     },
 
     placementMode: null,
@@ -95,8 +108,20 @@ function resetState() {
     cameraTargetId: null,
     cameraRingTimer: 0,
 
-    // v6: 卡包/奖励浮层（kind: 'lootPick3' | 'lootSingle' | 'bloodMoonReward'）
+    // v6: 卡包/奖励浮层（kind: 'lootPick3' | 'lootSingle' | 'bloodMoonReward' | 'talents' | 'relic'）
     overlay: null,
+
+    // v7: 任务系统
+    tasks: {
+      active: [],                      // [{ id, count, target, ...def }]
+      completed: [],                   // [taskId, ...]
+      events: {},                      // { trigger: count }（用于 fog_revealed_pct / gems_total 等查询型 trigger）
+      tutorialIndex: 0,                // 教学任务下一个要发的索引
+      pendingFollowup: false,          // tut3 触发的弱虫已生成
+    },
+
+    // v7: 来袭预警（傍晚阶段计算并显示）
+    raidPreview: null,                  // { day, count, mix: {...}, direction, precision }
 
     // v5: 迷雾
     fogMap: null,                     // 由 initFog() 填充
@@ -132,8 +157,24 @@ function resetState() {
   S.talents = { points: 0, unlocked: [], killCounter: 0 };
   if (typeof applyAllTalentEffects === 'function') applyAllTalentEffects();
 
+  // v7: 任务系统 + 教学第一个任务
+  if (typeof ensureTaskState === 'function') ensureTaskState();
+  if (typeof activateNextTutorialTask === 'function') activateNextTutorialTask();
+
   // v8: 撒探索奖励点（在虫巢生成后避免位置冲突）
   if (typeof generateInitialTreasures === 'function') generateInitialTreasures();
+
+  // v7: 5 类迷雾发现点（取代 treasures）
+  if (typeof generateInitialDiscoveries === 'function') generateInitialDiscoveries();
+
+  // v7: 开局核心北侧 1 格自带免费箭塔
+  if (G.freeStartingTower && typeof makeBuilding === 'function' && !S.flags.freeStartingTowerSpawned) {
+    const fx = G.core.x + (G.freeStartingTower.dx || 0);
+    const fy = G.core.y + (G.freeStartingTower.dy || -1);
+    const t = makeBuilding('tower', fx, fy);
+    if (t) t.isFreeStarting = true;     // 不可拆除标记（input.js removeBuilding 检查）
+    S.flags.freeStartingTowerSpawned = true;
+  }
 }
 
 function makeInitialNest(n) {

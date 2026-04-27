@@ -28,6 +28,10 @@ function onNestDestroyed(nest) {
   }
   // v7.1 天赋点：每杀 1 个虫巢 +1
   if (typeof earnTalentPoints === 'function') earnTalentPoints('nestKill', 1);
+  // v7: 黎明击破虫巢任务
+  if (typeof taskNotify === 'function' && S.phase === 'dawn') {
+    taskNotify('nest_killed_at_dawn');
+  }
 }
 
 function nestCurrentSpawnInterval(nest) {

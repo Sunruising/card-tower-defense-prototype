@@ -12,6 +12,18 @@ window.BugType = {
   HEAVY: 'heavy',
   BLOOD_BOSS: 'blood_boss',           // v6: 血月 Boss
   TERMINAL_BOSS: 'terminal_boss',     // v8: 通关 Boss
+  FAST: 'fast',                       // v7: 快速虫
+  FLYING: 'flying',                   // v7: 飞行虫
+  EXPLODER: 'exploder',               // v7: 自爆虫
+};
+
+// v7: 发现点类型
+window.DiscoveryType = {
+  RESOURCE: 'resource',
+  CHEST: 'chest',
+  WILD_CAMP: 'wild_camp',
+  SLEEPING_NEST: 'sleeping_nest',
+  RELIC: 'relic',
 };
 
 // ----- v5: 迷雾枚举（v6 术语：驱散 = VISIBLE / 点亮 = TEMP_VISIBLE） -----
@@ -125,12 +137,15 @@ window.G = {
   // ----- v8.2 时间加倍（顶栏 ⏩ 按钮 / F 键切换）-----
   timeScales: [1, 2, 3],
 
-  // ----- 初始 -----
+  // ----- 初始（v7: 起始胶 40→30）-----
   initial: {
     day: 1, phase: 'day',
-    glue: 40, tokens: 5, gems: 0,
+    glue: 30, tokens: 5, gems: 0,
     tokenCap: 10, tokenPerDay: 1,
   },
+
+  // v7: 开局核心北侧 1 格自带免费箭塔（保证教学夜下限）
+  freeStartingTower: { dx: 0, dy: -1 },         // 相对核心位置
 
   survivalDay: 7,
 
@@ -142,23 +157,27 @@ window.G = {
     regenPerSec: 1,
   },
 
-  // ----- 英雄（v6.1: 巡逻/警戒/追击；v7 起点 (10,7)；v7.1 sweep CD 25s）-----
+  // ----- 英雄（v7: 探索能力增强）-----
   hero: {
     x: 10, y: 7,
     hp: 80, maxHp: 80,
     damage: 10,
     attackRange: 2,
-    attackSpeed: 1,
+    attackSpeed: 1.25,                   // v7: 1.0→1.25（即 0.8s 一次）
     warnRange: 2,
-    marchSpeed: 0.7,
+    marchSpeed: 0.7,                     // 出征速度（保留）
+    freeMoveSpeed: 1.0,                  // v7: 自由移动速度
     respawnTime: 20,
     skillCardCD: 25,
-    patrolRadius: 1,                     // v6.1: 3×3 巡逻（半径 1，含中心 = 9 格）
-    patrolIntervalMin: 4,                // v6.1: 每 4-6s 走一格
+    patrolRadius: 1,
+    patrolIntervalMin: 4,
     patrolIntervalMax: 6,
     patrolSpeed: 0.4,
-    visionRadius: 3,                     // v6.1: 视野发现敌人即 ENGAGE
-    chaseLimit: 5,                       // v6.1: 离核心 5 格停止追击
+    visionRadius: 4,                     // v7: 3→4
+    exploreVisionBonus: 1,               // v7: 探索状态额外 +1
+    exploreRegenPerSec: 3,               // v7: 探索状态回血
+    pickupRange: 2.0,                    // v7: 自动拾取范围（覆盖 gift/treasure pickupRange）
+    chaseLimit: 5,
   },
   heroes: {
     tom: {
@@ -208,15 +227,39 @@ window.G = {
     warnRange: 3,
   },
 
-  // ----- 虫子 -----
+  // ----- 虫子（v7: hp 15→10、dmg 5→4、glueDrop 2→6）-----
   bug: {
-    hp: 15, maxHp: 15,
-    damage: 5, speed: 0.5,
+    hp: 10, maxHp: 10,
+    damage: 4, speed: 0.5,
     attackSpeed: 1, attackRange: 1.2,
-    bloodMoonStatMul: 1.3,            // 旧 v3 兼容：血月期间普通虫加成（v6 用 bloodMoon.bugHpMul/bugDamageMul 取代）
+    bloodMoonStatMul: 1.3,
     wanderRadius: 2,
     idleWanderSpeed: 0.2,
-    glueDrop: 2,
+    glueDrop: 6,
+  },
+  // v7 新虫子：快速 / 飞行 / 自爆
+  fastBug: {
+    hp: 6, maxHp: 6,
+    damage: 3, speed: 1.0,
+    attackSpeed: 1, attackRange: 1.2,
+    glueDrop: 4,
+  },
+  flyingBug: {
+    hp: 15, maxHp: 15,
+    damage: 5, speed: 0.6,
+    attackSpeed: 1, attackRange: 1.2,
+    glueDrop: 8,
+    flying: true,                       // 寻路无视 blocker（地面建筑/地刺）
+  },
+  exploderBug: {
+    hp: 8, maxHp: 8,
+    damage: 0,                          // 普攻不触发；接近自爆
+    speed: 0.4,
+    attackSpeed: 1, attackRange: 0,
+    glueDrop: 10,
+    explodeRadius: 1.5,
+    explodeDamage: 25,
+    triggerProximity: 1.0,              // 接近核心/塔 1 格内触发自爆
   },
   boss: {
     hp: 80, damage: 10, speed: 0.4, maxHp: 80,
@@ -229,17 +272,18 @@ window.G = {
   },
   heavyBug: {
     hp: 35, maxHp: 35, damage: 9, speed: 0.35,
-    attackSpeed: 0.8, attackRange: 1.2, glueDrop: 6,
+    attackSpeed: 0.8, attackRange: 1.2, glueDrop: 15,    // v7: 6→15
+    physicalDamageReduction: 0.5,                         // v7: 物理减伤 50%
   },
 
-  // v6 血月 Boss
+  // v6 血月 Boss（v7: glueDrop 50→80）
   bloodBoss: {
     hp: 300, maxHp: 300,
     damage: 15,
     speed: 0.3,
     attackSpeed: 1, attackRange: 1.2,
     sizeMul: 2.0,
-    glueDrop: 50,
+    glueDrop: 80,
     gemsDrop: 2,
     spawnsLootGift: true,             // 击杀后掉一个战利品包
   },
@@ -260,20 +304,20 @@ window.G = {
   // ----- 建筑（v6: slow_spike 不可被攻击 + 5 次次数）-----
   collector: {
     hp: 20, maxHp: 20,
-    produceInterval: 4, produceAmount: 1,
+    produceInterval: 6, produceAmount: 1,            // v7: 4→6（约 0.17/s 接近 0.15）
   },
   reinforcedCollector: {
     hp: 40, maxHp: 40,
-    produceInterval: 2, produceAmount: 1,
+    produceInterval: 3, produceAmount: 1,            // v7: 2→3（约 0.33/s 接近 0.3）
     warmupTime: 10,
   },
   tower: {
     hp: 40, maxHp: 40,
-    attackRange: 2, attackSpeed: 1, damage: 4,
+    attackRange: 2, attackSpeed: 1, damage: 6,       // v7: 4→6
   },
   mageTower: {
     hp: 35, maxHp: 35,
-    attackRange: 2.5, attackSpeed: 0.6, damage: 8,
+    attackRange: 2.5, attackSpeed: 0.6, damage: 15,  // v7: 8→15
     splashRadius: 1.0,
   },
   slowSpike: {
@@ -325,7 +369,13 @@ window.G = {
     lightning: 'epic',
     recall: 'epic',
     sweep: 'normal',                   // 英雄技能
+    ancient_wall: 'special',           // v7: 仅发现点获得
+    bug_signal: 'special',
+    time_glass: 'special',
   },
+
+  // v7: 特殊卡池（rarity = 'special'，仅遗迹/宝箱可获得）
+  specialCards: ['ancient_wall', 'bug_signal', 'time_glass'],
 
   // v6: 商店栏（v7.1: 直购 7 张普通卡，含探照灯）
   shop: [
@@ -521,6 +571,129 @@ window.G = {
   // ----- v7: 胜利条件 -----
   winCondition: {
     bloodMoonSurvivalOnly: true,
+  },
+
+  // ===== v7 节奏与玩法重塑 =====
+
+  // v7: 每天虫子组成比例（spawn.js makeBug 时按比例选虫种）
+  // 教学期 D1 极简、D2 引入快速、D4 飞行、D5+ 自爆
+  nightlyEnemyMix: {
+    1: { normal: 1.00 },
+    2: { normal: 0.85, fast: 0.15 },
+    3: { normal: 0.65, fast: 0.20, heavy: 0.15 },
+    4: { normal: 0.55, fast: 0.20, heavy: 0.15, flying: 0.10 },
+    5: { normal: 0.45, fast: 0.20, heavy: 0.15, flying: 0.15, exploder: 0.05 },
+    6: { normal: 0.40, fast: 0.20, heavy: 0.20, flying: 0.15, exploder: 0.05 },
+    default: { normal: 0.40, fast: 0.20, heavy: 0.20, flying: 0.15, exploder: 0.05 },
+  },
+
+  // v7: 来袭预警（傍晚阶段开始时显示）
+  raidWarning: {
+    enabled: true,
+    precisePrecisionDays: 2,            // Day 1-2 精确（含数量、方向、类型）
+    roughPrecisionDays: 4,              // Day 3-4 粗略（方向、约数、主要类型）
+    // Day 5+ 仅"规模：大"；血月夜不预警（直接红字）
+    durationOnDusk: 15,                 // 与傍晚阶段同步显示
+  },
+
+  // v7: 任务系统
+  tasks: {
+    // 教学期 4 个固定任务（按顺序）
+    tutorial: [
+      {
+        id: 'tut1', title: '放下采胶器',
+        description: '把"基础采胶器"打到地图空格上',
+        trigger: 'place_collector', count: 1,
+        reward: { glue: 10 },
+      },
+      {
+        id: 'tut2', title: '建造箭塔',
+        description: '从顶部商店买一座箭塔，放在核心附近',
+        trigger: 'place_tower', count: 1,
+        reward: { glue: 5 },
+      },
+      {
+        id: 'tut3', title: '英雄首胜',
+        description: '让英雄打死一只虫子',
+        trigger: 'hero_kill_bug', count: 1,
+        reward: { card: 'normal' },
+      },
+      {
+        id: 'tut4', title: '撑过第一夜',
+        description: '少量虫子从西方来袭，守住核心',
+        trigger: 'survive_first_night', count: 1,
+        reward: { gems: 1, card: 'rare' },
+        endsTutorial: true,
+        endsTutorialMessage: '第一夜过去了。世界还在等你。',
+      },
+    ],
+    // 长线任务（教学结束后激活，最多同时 3 个）
+    longRunning: [
+      { id: 'explorer', title: '探索者', description: '驱散 30% 地图', trigger: 'fog_revealed_pct', count: 0.3, reward: { glue: 30 } },
+      { id: 'scavenger', title: '拾荒者', description: '拾取 5 个发现点', trigger: 'discovery_pickup', count: 5, reward: { card: 'rare' } },
+      { id: 'first_blood', title: '第一血', description: '击败 1 个野怪据点', trigger: 'wildcamp_defeated', count: 1, reward: { gems: 1 } },
+      { id: 'dawn_strike', title: '黎明袭击', description: '在黎明阶段击破 1 个虫巢', trigger: 'nest_killed_at_dawn', count: 1, reward: { glue: 50, gems: 2 } },
+      { id: 'remote_kill', title: '远程奇袭', description: '用闪电击杀重甲虫', trigger: 'lightning_kill_heavy', count: 1, reward: { card: 'rare' } },
+      { id: 'gem_collector', title: '收集者', description: '累积 5 颗宝石', trigger: 'gems_total', count: 5, reward: { card: 'special' } },
+      { id: 'blood_moon_survivor', title: '血月幸存者', description: '撑过一次血月夜', trigger: 'blood_moon_survived', count: 1, reward: { card: 'epic' } },
+      { id: 'purifier', title: '净化者', description: '击败终极 BOSS', trigger: 'terminal_boss_killed', count: 1, reward: { glue: 200 } },
+    ],
+    activeMaxTutorial: 1,                // 教学期一次只显示 1 个
+    activeMaxLongRunning: 3,
+  },
+
+  // v7: 5 类迷雾发现点
+  discoveryPoints: {
+    enabled: true,
+    totalCount: 12,                      // 实际 = totalCount + random(0..variance)
+    totalCountVariance: 3,
+    minDistanceFromCore: 5,
+    minDistanceFromOther: 3,
+    pickupRange: 1.4,
+    typeWeights: {
+      resource: 5,
+      chest: 3,
+      wild_camp: 3,
+      sleeping_nest: 1,
+      relic: 1,                          // 至少 1 个必现
+    },
+    minRelics: 1,
+    resource: {
+      rewards: [
+        { weight: 50, kind: 'glue', amount: 20 },
+        { weight: 50, kind: 'glue', amount: 30 },
+      ],
+    },
+    chest: {
+      openDuration: 0.5,
+      rewards: [
+        { weight: 30, kind: 'card', rarity: 'normal' },
+        { weight: 30, kind: 'card', rarity: 'rare' },
+        { weight: 20, kind: 'glue', amount: 50 },
+        { weight: 10, kind: 'gems', amount: 1 },
+        { weight: 10, kind: 'card', rarity: 'special' },
+      ],
+    },
+    wildCamp: {
+      bugCountMin: 2, bugCountMax: 4,
+      bugType: 'normal',                 // 据点用普通虫
+      passiveAggro: false,               // 不主动攻击玩家
+      reward: { glue: 30, card: 'normal' },
+      respawnDays: 2,
+      revealRadiusOnDefeat: 2,           // 击破后周围 2 格永久驱散
+    },
+    sleepingNest: {
+      awakenOnBloodMoon: true,           // 血月唤醒变正常虫巢
+      reward: { lootGift: 'normal', card: 'special' },
+    },
+    relic: {
+      events: [
+        { id: 'core_hp', text: '「他们曾在这里筑墙。」核心永久 +50 最大生命', effect: { coreMaxHp: 50 } },
+        { id: 'token_perm', text: '「号令仍在。」+1 出征令牌、令牌上限永久 +1', effect: { tokenInstant: 1, tokenCapBonus: 1 } },
+        { id: 'special_card', text: '「藏在墙缝里的卡片。」获得一张特殊稀有卡', effect: { addSpecialCard: true } },
+        { id: 'collector_buff', text: '「这是采集图纸。」采胶器永久 +30% 产出', effect: { collectorMul: 1.3 } },
+      ],
+    },
   },
 
   // ----- v7.1 / v8.1 天赋树（4 大类：英雄 / 公共 / 军事 / 生产）-----

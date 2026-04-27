@@ -230,6 +230,27 @@ function updateBugs(dt) {
           continue;
         }
       }
+      // v7: 自爆虫接近核心 / 建筑 / 英雄 时触发自爆
+      if (bug.isExploder && !bug.exploded) {
+        const tp = (G.exploderBug && G.exploderBug.triggerProximity) || 1.0;
+        let trigger = false;
+        if (S.core && Math.hypot(S.core.x - bug.x, S.core.y - bug.y) <= tp) trigger = true;
+        if (!trigger && S.buildings) {
+          for (const b of S.buildings) {
+            if (b.dead) continue;
+            if (b.targetable === false) continue;     // 减速地刺等不算
+            if (Math.hypot(b.x - bug.x, b.y - bug.y) <= tp) { trigger = true; break; }
+          }
+        }
+        if (!trigger && heroAlive()
+            && Math.hypot(S.hero.x - bug.x, S.hero.y - bug.y) <= tp) {
+          trigger = true;
+        }
+        if (trigger) {
+          if (typeof explodeBug === 'function') explodeBug(bug);
+          continue;
+        }
+      }
       const t = findBugRangeTarget(bug);
       if (t) { bug.target = t; bug.state = 'attacking'; continue; }
       const dx = S.core.x - bug.x;
@@ -238,7 +259,8 @@ function updateBugs(dt) {
       const step = speedNow * dt;
       const nx = bug.x + (dx / dl) * step;
       const ny = bug.y + (dy / dl) * step;
-      const blocker = findBlockerAt(Math.round(nx), Math.round(ny));
+      // v7: 飞行虫无视 blocker，直接穿越
+      const blocker = bug.flying ? null : findBlockerAt(Math.round(nx), Math.round(ny));
       if (blocker && blocker !== bug) {
         bug.target = blocker;
         bug.state = 'attacking';
@@ -441,9 +463,61 @@ function updateHero(dt) {
     }
   }
 
+  // v7: 探索状态判断（基地 3×3 外）
+  h.exploreState = (typeof heroInExploreState === 'function') ? heroInExploreState() : false;
+
   // === v6.1: 出征状态保留 v5 行为，不响应核心警报 ===
   if (h.state === 'marching' || h.state === 'fighting' || h.state === 'returning') {
     updateHeroOutOfBaseLegacy(dt);
+    return;
+  }
+
+  // v7: 自由移动状态
+  if (h.state === 'free') {
+    if (!h.freeMoveTarget) { h.state = 'atBase'; return; }
+    const tx = h.freeMoveTarget.x;
+    const ty = h.freeMoveTarget.y;
+    const dx = tx - h.x;
+    const dy = ty - h.y;
+    const d = Math.hypot(dx, dy);
+    // 路上遇到敌人自动战斗
+    const enemy = findNearestBugInRange(h.x, h.y, G.hero.visionRadius + (S.hero.visionRadiusBonus || 0));
+    if (enemy) {
+      const ed = Math.hypot(enemy.x - h.x, enemy.y - h.y);
+      if (ed <= h.attackRange && h.attackCd <= 0) {
+        dealDamage(h, enemy, h.damage);
+        addAttackFx(h, enemy, 'hero');
+        h.attackCd = 1 / h.attackSpeed;
+      } else if (ed <= h.attackRange) {
+        // 在射程，等待 CD
+      } else {
+        // 朝敌人移动而不是目标点
+        const edx = enemy.x - h.x, edy = enemy.y - h.y;
+        const edl = Math.hypot(edx, edy) || 1;
+        const speed = (G.hero.freeMoveSpeed || 1.0);
+        h.x += (edx / edl) * speed * dt;
+        h.y += (edy / edl) * speed * dt;
+      }
+    } else {
+      // 朝目标点走
+      if (d < 0.15) {
+        // 抵达
+        h.state = 'atBase';
+        h.freeMoveTarget = null;
+      } else {
+        const speed = (G.hero.freeMoveSpeed || 1.0) * (h.marchSpeedMul || 1);
+        h.x += (dx / d) * speed * dt;
+        h.y += (dy / d) * speed * dt;
+      }
+    }
+    // 探索状态额外回血 + 视野（视野通过 exploreVisionBonus 加）
+    if (h.exploreState && h.hp < h.maxHp) {
+      h.hp = Math.min(h.maxHp, h.hp + (G.hero.exploreRegenPerSec || 3) * dt);
+    }
+    // 揭雾（hero 路过自动点亮）
+    if (typeof revealTemp === 'function') {
+      revealTemp(Math.round(h.x), Math.round(h.y), G.fog.heroVisionRadius, G.fog.heroVisionDuration);
+    }
     return;
   }
 

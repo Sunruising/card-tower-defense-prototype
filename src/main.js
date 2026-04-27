@@ -75,6 +75,10 @@ function stepWorld(dt) {
     if (typeof updateSearchlights === 'function') updateSearchlights(dt);   // v7.1: 探照灯锥形扫描
     updateScouts(dt);             // v5: 侦察兵
     if (typeof updateTreasures === 'function') updateTreasures(dt);   // v8: 探索奖励拾取
+    if (typeof updateDiscoveries === 'function') updateDiscoveries(dt);  // v7: 5 类发现点
+    if (typeof checkWildCampDefeat === 'function') checkWildCampDefeat(); // v7: 野怪据点击败检查
+    if (typeof updateRaidPreview === 'function') updateRaidPreview(dt);  // v7: 来袭预警倒数
+    if (typeof updateTasks === 'function') updateTasks(dt);            // v7: 任务系统轮询型 trigger
     updateFog(dt);                // v5: 迷雾
     updateGifts(dt);
     updateFx(dt);

@@ -1,10 +1,13 @@
-// entities/bug.js —— 虫子（普通、血月、Boss、v3 守卫、v4 重甲、v5 减速、v6 血月 Boss + rallyTarget）
+// entities/bug.js —— 虫子（普通、血月、Boss、v3 守卫、v4 重甲、v5 减速、v6 血月 Boss + rallyTarget、v7 fast/flying/exploder）
 function makeBug(nest, opts = {}) {
   const isBoss = !!opts.boss;
   const isGuard = !!opts.guard;
   const isHeavy = !!opts.heavy;
   const isBloodBoss = !!opts.bloodBoss;
   const isTerminalBoss = !!opts.terminalBoss;     // v8
+  const isFast = !!opts.fast;                     // v7
+  const isFlying = !!opts.flying;                 // v7
+  const isExploder = !!opts.exploder;             // v7
   const bloodMoon = !!opts.bloodMoon;
   const isBloodMoonNight = !!opts.isBloodMoonNight;
 
@@ -13,10 +16,14 @@ function makeBug(nest, opts = {}) {
   else if (isBloodBoss) { cfg = G.bloodBoss; bugType = BugType.BLOOD_BOSS; }
   else if (isBoss) { cfg = G.boss; bugType = BugType.BOSS; }
   else if (isHeavy) { cfg = G.heavyBug; bugType = BugType.HEAVY; }
+  else if (isFlying) { cfg = G.flyingBug; bugType = BugType.FLYING; }       // v7
+  else if (isFast) { cfg = G.fastBug; bugType = BugType.FAST; }             // v7
+  else if (isExploder) { cfg = G.exploderBug; bugType = BugType.EXPLODER; } // v7
   else { cfg = G.bug; bugType = isGuard ? BugType.GUARD : BugType.NORMAL; }
 
-  // v6 §8: 血月夜对普通虫的 hp/dmg 加成（不影响 boss/heavy/guard/bloodBoss/terminalBoss）
-  const bm = isBloodMoonNight && !isBoss && !isHeavy && !isGuard && !isBloodBoss && !isTerminalBoss;
+  // v6 §8: 血月夜对普通虫的 hp/dmg 加成（不影响特殊虫种）
+  const bm = isBloodMoonNight && !isBoss && !isHeavy && !isGuard && !isBloodBoss && !isTerminalBoss
+    && !isFast && !isFlying && !isExploder;
   let hp = cfg.hp;
   let damage = cfg.damage;
   if (bm) {
@@ -50,6 +57,11 @@ function makeBug(nest, opts = {}) {
     isHeavy,
     isBloodBoss,                      // v6
     isTerminalBoss,                   // v8
+    isFast,                           // v7
+    isFlying,                         // v7
+    isExploder,                       // v7
+    flying: !!cfg.flying,             // v7: 飞行虫寻路标志（无视 blocker）
+    exploded: false,                  // v7: 自爆触发标志
     bloodBuffed: bm,                  // v6: 血月加成普通虫的视觉标记
     guardNestId: isGuard ? nest.id : null,
     attackSpeed: cfg.attackSpeed,
@@ -90,6 +102,9 @@ function killBug(bug) {
     else if (bug.isBloodBoss) drop = G.bloodBoss.glueDrop;
     else if (bug.isBoss) drop = G.boss.glueDrop;
     else if (bug.isHeavy) drop = G.heavyBug.glueDrop;
+    else if (bug.isFlying) drop = G.flyingBug.glueDrop;       // v7
+    else if (bug.isFast) drop = G.fastBug.glueDrop;           // v7
+    else if (bug.isExploder) drop = G.exploderBug.glueDrop;   // v7
     else if (bug.isGuard) drop = G.guardBug.glueDrop;
     else drop = G.bug.glueDrop;
     S.glue += drop;
@@ -142,6 +157,16 @@ function killBug(bug) {
   if (typeof earnTalentPoints === 'function' && !bug.isGuard && !bug.silentRemove && !bug.retreating) {
     earnTalentPoints('kill', 1);
   }
+
+  // v7: 任务事件 —— 英雄击杀虫子（hero_kill_bug）
+  if (typeof taskNotify === 'function' && !bug.isGuard && !bug.silentRemove && !bug.retreating) {
+    // 简化：任何虫子被击杀都触发（教学期 tut3 要求"英雄打死一只虫子"，玩家在白天会自然完成）
+    taskNotify('hero_kill_bug', { bug });
+  }
+  // v7: 终极 BOSS 击杀任务
+  if (bug.isTerminalBoss && typeof taskNotify === 'function') {
+    taskNotify('terminal_boss_killed');
+  }
 }
 
 // v5: 当前移速（应用减速）
@@ -151,6 +176,56 @@ function bugCurrentSpeed(bug) {
   }
   return bug.speed;
 }
+
+// v7: 重甲虫物理减伤 50%（dealDamage 路径生效；魔法直伤 bug.hp -= dmg 不走此路径）
+function applyHeavyReduction(bug, amount) {
+  if (bug && bug.isHeavy && G.heavyBug && G.heavyBug.physicalDamageReduction) {
+    return amount * (1 - G.heavyBug.physicalDamageReduction);
+  }
+  return amount;
+}
+window.applyHeavyReduction = applyHeavyReduction;
+
+// v7: 自爆虫触发 —— 范围内对核心/建筑/英雄/剑士造成爆炸伤害
+function explodeBug(bug) {
+  if (!bug || bug.exploded || bug.dead) return;
+  bug.exploded = true;
+  const r = G.exploderBug.explodeRadius;
+  const dmg = G.exploderBug.explodeDamage;
+  // 推爆炸 fx 到 S.explosions（drawExplosions 渲染）
+  if (S.explosions) {
+    S.explosions.push({ x: bug.x, y: bug.y, age: 0, duration: 0.4, radius: r });
+  }
+  // 范围内伤害（用 dealDamage 走标准伤害链）
+  if (typeof dealDamage === 'function') {
+    if (S.core && Math.hypot(S.core.x - bug.x, S.core.y - bug.y) <= r) {
+      dealDamage(bug, S.core, dmg);
+    }
+    if (S.buildings) {
+      for (const b of S.buildings) {
+        if (b.dead) continue;
+        if (Math.hypot(b.x - bug.x, b.y - bug.y) <= r) {
+          dealDamage(bug, b, dmg);
+        }
+      }
+    }
+    if (typeof heroAlive === 'function' && heroAlive()
+        && Math.hypot(S.hero.x - bug.x, S.hero.y - bug.y) <= r) {
+      dealDamage(bug, S.hero, dmg);
+    }
+    if (S.swordsmen) {
+      for (const sw of S.swordsmen) {
+        if (sw.dead) continue;
+        if (Math.hypot(sw.x - bug.x, sw.y - bug.y) <= r) {
+          dealDamage(bug, sw, dmg);
+        }
+      }
+    }
+  }
+  // 自爆虫自己死
+  killBug(bug);
+}
+window.explodeBug = explodeBug;
 
 // v8: 在地图核心 4-6 格之外刷出终极 Boss（不通过任何虫巢）
 function spawnTerminalBoss() {
@@ -181,6 +256,8 @@ function spawnTerminalBoss() {
     bugType: BugType.TERMINAL_BOSS,
     isBoss: false, isGuard: false, isHeavy: false,
     isBloodBoss: false, isTerminalBoss: true,
+    isFast: false, isFlying: false, isExploder: false,    // v7
+    flying: false, exploded: false,                       // v7
     bloodBuffed: false,
     guardNestId: null,
     attackSpeed: cfg.attackSpeed,

@@ -345,7 +345,10 @@ function bindInput(canvas) {
       if (isOverMap(mx, my)) {
         const c = screenToCell(mx, my);
         const b = S.buildings.find(b => !b.dead && b.x === c.x && b.y === c.y);
-        if (b) { removeBuilding(b); showMessage('已拆除（不返还胶质）'); return; }
+        if (b) {
+          if (b.isFreeStarting) { showMessage('开局赠送的箭塔不可拆除'); return; }
+          removeBuilding(b); showMessage('已拆除（不返还胶质）'); return;
+        }
       }
       return;
     }
@@ -407,6 +410,11 @@ function bindInput(canvas) {
                                                 && Math.round(t.x) === c.x && Math.round(t.y) === c.y);
       if (treasure && typeof onClickTreasure === 'function') { onClickTreasure(treasure); return; }
 
+      // v7: 发现点点击拾取（discovery）
+      const discovery = S.discoveries && S.discoveries.find(d => !d.pickedUp
+                                                && Math.round(d.x) === c.x && Math.round(d.y) === c.y);
+      if (discovery && typeof onClickDiscovery === 'function') { onClickDiscovery(discovery); return; }
+
       // v6: target-select 模式（仅 lightning）
       if (S.placementMode && S.placementMode.selectKind) {
         applyTargetSelectAt(c.x, c.y);
@@ -415,9 +423,24 @@ function bindInput(canvas) {
 
       if (S.placementMode) { confirmPlacementAt(c.x, c.y); return; }
 
-      // 单击英雄 → 镜头聚焦
+      // v7: 单击英雄 → 召回到基地（双击直接召回；单击聚焦相机）
       if (heroAlive() && Math.round(S.hero.x) === c.x && Math.round(S.hero.y) === c.y) {
-        focusCameraOn(S.hero.id);
+        const now = performance.now();
+        if (S.lastHeroClickAt && now - S.lastHeroClickAt < 350) {
+          // 双击 → 召回
+          if (typeof heroRecallToBase === 'function') heroRecallToBase();
+          S.lastHeroClickAt = 0;
+        } else {
+          focusCameraOn(S.hero.id);
+          S.lastHeroClickAt = now;
+        }
+        return;
+      }
+
+      // v7: 单击核心 → 召回英雄
+      if (Math.round(S.core.x) === c.x && Math.round(S.core.y) === c.y) {
+        if (typeof heroRecallToBase === 'function') heroRecallToBase();
+        focusCameraOn(S.core.id);
         return;
       }
 
@@ -433,6 +456,19 @@ function bindInput(canvas) {
       const b = S.buildings.find(b => !b.dead && b.x === c.x && b.y === c.y);
       if (b) { S.selectedBuildingId = b.id; return; }
       S.selectedBuildingId = null;
+
+      // v7: 没点到任何特殊目标 → 自由移动到该格（仅在已揭格）
+      if (heroAlive() && typeof heroStartFreeMove === 'function') {
+        if (typeof isVisible === 'function' && !isVisible(c.x, c.y)) {
+          showMessage('看不到迷雾里的位置');
+          return;
+        }
+        if (heroIsBusy()) {
+          showMessage('英雄出征中（用召回令中断）');
+          return;
+        }
+        heroStartFreeMove(c.x, c.y);
+      }
     }
   });
 

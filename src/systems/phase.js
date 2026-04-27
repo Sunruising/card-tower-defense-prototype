@@ -49,8 +49,11 @@ function updatePhase(dt) {
       if (typeof showBloodMoonSurvived === 'function') showBloodMoonSurvived();
       // v6 §9: 血月之后启用虫流虚假化
       if (S.flags) S.flags.rallyEnabled = true;
+
       // 兼容字段（v8 不再用作胜利条件）
       if (S.flags) S.flags.bloodMoonSurvived = true;
+      // v7: 血月幸存任务
+      if (typeof taskNotify === 'function') taskNotify('blood_moon_survived');
 
       // v8: 撑过 winRequiredBloodMoons 次 → 刷终极 Boss
       if (S.flags
@@ -63,6 +66,11 @@ function updatePhase(dt) {
     if (S.bloodMoonActive) {
       S.bloodMoonActive = false;
       if (S.flags) S.flags.bloodBossSpawned = false;
+    }
+
+    // v7: 第一夜 dawn → day 触发"撑过第一夜"任务
+    if (S.day === 1 && typeof taskNotify === 'function') {
+      taskNotify('survive_first_night');
     }
 
     S.day += 1;
@@ -102,6 +110,15 @@ function updatePhase(dt) {
       // v8: 血月 dusk 智能补刷虫巢
       if (typeof spawnBloodMoonNests === 'function') spawnBloodMoonNests();
     }
+  }
+
+  // v7: 傍晚开始计算来袭预警（血月夜由 computeRaidPreview 内部跳过）
+  if (nextPhase === 'dusk') {
+    if (typeof computeRaidPreview === 'function') computeRaidPreview();
+  }
+  // v7: 夜晚开始清掉预警
+  if (nextPhase === 'night') {
+    if (typeof clearRaidPreview === 'function') clearRaidPreview();
   }
 
   // v6 §8: 进入 night 且血月激活 → 夜晚时长拉到 120s

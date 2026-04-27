@@ -132,6 +132,11 @@ function confirmPlacementAt(cellX, cellY) {
       return;
     }
     makeBuilding(def.subtype, cellX, cellY);
+    // v7: 任务事件
+    if (typeof taskNotify === 'function') {
+      if (def.subtype === 'collector' || def.subtype === 'reinforced_collector') taskNotify('place_collector');
+      if (def.subtype === 'tower') taskNotify('place_tower');
+    }
     consumeHandStack(pm.handIndex);
     keepPlacingIfStackNonEmpty(pm);
   } else if (def.id === 'firerain') {

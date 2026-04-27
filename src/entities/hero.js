@@ -2,7 +2,34 @@
 function heroAlive() { return S.hero.state !== 'dead'; }
 
 function heroIsBusy() {
+  // v7: free 移动算"自由"不算 busy（玩家随时可中断）
   return ['marching', 'fighting', 'returning'].includes(S.hero.state);
+}
+
+// v7: 英雄自由移动 —— 由 input.js 调用
+function heroStartFreeMove(targetX, targetY) {
+  if (!heroAlive()) return;
+  // 出征中不响应自由移动（玩家自己用召回令）
+  if (heroIsBusy()) return;
+  S.hero.state = 'free';
+  S.hero.freeMoveTarget = { x: targetX, y: targetY };
+  S.hero.target = null;
+}
+
+function heroRecallToBase() {
+  if (!heroAlive()) return;
+  if (heroIsBusy()) return;
+  S.hero.state = 'atBase';
+  S.hero.freeMoveTarget = null;
+  S.hero.target = null;
+}
+
+// v7: 是否处于探索状态（基地 3×3 外）
+function heroInExploreState() {
+  if (!heroAlive()) return false;
+  const dx = Math.abs(S.hero.x - S.core.x);
+  const dy = Math.abs(S.hero.y - S.core.y);
+  return Math.max(dx, dy) > 1.5;
 }
 
 function killHero() {

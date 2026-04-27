@@ -52,8 +52,11 @@ function drawMap(ctx) {
   // 礼盒：仅可见区域可见
   drawGifts(ctx);
 
-  // v8: 探索宝藏（仅在驱散区域可见）
+  // v8: 探索宝藏（仅在驱散区域可见；v7 起 S.treasures 始终为空 — 保留兼容）
   drawTreasures(ctx);
+
+  // v7: 5 类发现点（仅在驱散区域可见）
+  drawDiscoveries(ctx);
 
   // v5 迷雾 overlay（在单位之上，目标提示之下）
   drawFogOverlay(ctx);
@@ -63,6 +66,9 @@ function drawMap(ctx) {
 
   // 放置预览（v5 极简化：仅 legal/illegal 色块）
   if (S.placementMode) drawPlacementPreview(ctx);
+
+  // v7: 自爆爆炸特效（在 effects 之前，确保不被遮）
+  drawExplosions(ctx);
 
   drawEffects(ctx);
 
@@ -415,10 +421,21 @@ function drawBug(ctx, bug) {
   else if (bug.isBloodBoss) { r = 24; fill = G.colors.bloodBoss; }
   else if (bug.isBoss) { r = 12; fill = G.colors.bugBoss; }
   else if (bug.isHeavy) { r = 9; fill = G.colors.bugHeavy; }
+  else if (bug.isFlying) { r = 9; fill = '#9B59B6'; }       // v7 紫色飞行虫
+  else if (bug.isFast) { r = 6; fill = '#5DADE2'; }         // v7 浅蓝快速虫
+  else if (bug.isExploder) { r = 9; fill = '#C0392B'; }     // v7 深红自爆虫
   else if (bug.isGuard) { r = 8; fill = G.colors.bugGuard; }
   else { r = 7; fill = G.colors.bug; }
   ctx.fillStyle = fill;
   if (bug.retreating) ctx.globalAlpha = 0.5;
+  // v7: 快速虫 — 先画残影（在主体之前，避免遮主体）
+  if (bug.isFast && !bug.retreating) {
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = fill;
+    ctx.beginPath(); ctx.arc(px - 4, py, r * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = bug.retreating ? 0.5 : 1;
+    ctx.fillStyle = fill;
+  }
   ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
   if (bug.isTerminalBoss) {
     // 终极 Boss 双重描边 + 紫色光晕
@@ -443,6 +460,22 @@ function drawBug(ctx, bug) {
   if (bug.isGuard) {
     ctx.strokeStyle = '#FFD700';
     ctx.lineWidth = 2; ctx.stroke();
+  }
+  // v7: 飞行虫 — 白色翅膀符号（左右两个三角）
+  if (bug.isFlying) {
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(px - r - 2, py - 2); ctx.lineTo(px - r - 6, py - 6); ctx.lineTo(px - r - 2, py - 6);
+    ctx.moveTo(px + r + 2, py - 2); ctx.lineTo(px + r + 6, py - 6); ctx.lineTo(px + r + 2, py - 6);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+  // v7: 自爆虫 — 内部脉动红光
+  if (bug.isExploder && !bug.exploded) {
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+    ctx.fillStyle = `rgba(255,80,40,${pulse})`;
+    ctx.beginPath(); ctx.arc(px, py, r * 0.5, 0, Math.PI * 2); ctx.fill();
   }
   // v5 减速指示
   if (bug.slowedUntil > performance.now()) {
@@ -484,6 +517,27 @@ function drawBug(ctx, bug) {
     ctx.lineTo(baseX - nx * 3, baseY - ny * 3);
     ctx.closePath();
     ctx.fill();
+  }
+}
+
+// v7: 自爆爆炸特效 — 红色扩散圈（用 performance.now 计时，无需 dt）
+function drawExplosions(ctx) {
+  if (!S.explosions || S.explosions.length === 0) return;
+  const now = performance.now();
+  for (let i = S.explosions.length - 1; i >= 0; i--) {
+    const e = S.explosions[i];
+    if (!e.bornAt) e.bornAt = now;
+    const age = (now - e.bornAt) / 1000;
+    const t = age / e.duration;
+    if (t >= 1) { S.explosions.splice(i, 1); continue; }
+    const { px, py } = cellToPixel(e.x, e.y);
+    const r = e.radius * G.cellSize * (0.3 + t * 0.7);
+    ctx.fillStyle = `rgba(231,76,60,${(1 - t) * 0.5})`;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = `rgba(255,140,40,${1 - t})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 1;
   }
 }
 
@@ -698,4 +752,96 @@ function drawPlacementPreview(ctx) {
   }
   ctx.fillStyle = legal ? G.colors.legalTile : G.colors.illegalTile;
   ctx.fillRect(x * G.cellSize, G.mapTop + y * G.cellSize, G.cellSize, G.cellSize);
+}
+
+// v7: 5 类发现点渲染（迷雾里看不见；驱散后随浮动呼吸）
+function drawDiscoveries(ctx) {
+  if (!S.discoveries || S.discoveries.length === 0) return;
+  for (const d of S.discoveries) {
+    if (d.pickedUp) continue;
+    if (typeof isVisible === 'function' && !isVisible(d.x, d.y)) continue;
+    const bob = Math.sin(d.bobPhase || 0) * 4;
+    const { px, py } = cellToPixel(d.x, d.y);
+    const cy = py + bob;
+    if (d.type === 'resource') {
+      // 金色小堆 + 闪烁
+      const halo = 0.55 + 0.25 * Math.sin((d.bobPhase || 0) * 1.4);
+      ctx.fillStyle = `rgba(255,215,0,${0.2 * halo})`;
+      ctx.beginPath(); ctx.arc(px, cy, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#F1C40F';
+      ctx.beginPath(); ctx.arc(px, cy, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(px, cy, 6, 0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 1;
+    } else if (d.type === 'chest') {
+      // 木质宝箱
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.beginPath(); ctx.ellipse(px, py + 11, 11, 3, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8B5A2B';
+      ctx.fillRect(px - 10, cy - 5, 20, 11);
+      ctx.fillStyle = '#A0522D';
+      ctx.fillRect(px - 11, cy - 10, 22, 7);
+      ctx.strokeStyle = '#FFD700'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(px - 11, cy - 10, 22, 16);
+      ctx.fillStyle = '#FFD700';
+      ctx.fillRect(px - 2, cy - 4, 4, 5);
+      ctx.lineWidth = 1;
+    } else if (d.type === 'wild_camp') {
+      // 营地图标（一团小怪聚落 + 红色营圈 + ?）
+      if (!d.defeated) {
+        ctx.fillStyle = '#7F2E2E';
+        for (let i = 0; i < 3; i++) {
+          const ax = px + Math.cos(i * 2.1) * 8;
+          const ay = cy + Math.sin(i * 2.1) * 8;
+          ctx.beginPath(); ctx.arc(ax, ay, 4, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.strokeStyle = '#E74C3C'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(px, cy, 14, 0, Math.PI * 2); ctx.stroke();
+        ctx.font = 'bold 9px sans-serif';
+        ctx.fillStyle = '#FFF';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('?', px, cy);
+        ctx.lineWidth = 1;
+      } else {
+        // 已击败 — 灰色废墟（重生倒计时）
+        ctx.fillStyle = 'rgba(120,120,120,0.5)';
+        ctx.beginPath(); ctx.arc(px, cy, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#888'; ctx.lineWidth = 1;
+        if (ctx.setLineDash) ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.arc(px, cy, 12, 0, Math.PI * 2); ctx.stroke();
+        if (ctx.setLineDash) ctx.setLineDash([]);
+        ctx.fillStyle = '#AAA';
+        ctx.font = '9px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const remain = Math.max(0, (d.respawnAtDay || 0) - S.day);
+        ctx.fillText(remain + 'd', px, cy);
+      }
+    } else if (d.type === 'sleeping_nest') {
+      // 紫色圆 + Z 字母
+      ctx.fillStyle = '#5C3D70';
+      ctx.beginPath(); ctx.arc(px, cy, 14, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#9B6BD9'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, cy, 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#FFF';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Z', px, cy);
+      ctx.lineWidth = 1;
+    } else if (d.type === 'relic') {
+      // 石碑（深灰矩形 + 金"遗"字）
+      ctx.fillStyle = '#5D6D7E';
+      ctx.fillRect(px - 6, cy - 12, 12, 22);
+      ctx.strokeStyle = '#85929E'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(px - 6, cy - 12, 12, 22);
+      ctx.fillStyle = '#F4D03F';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('遗', px, cy);
+      ctx.lineWidth = 1;
+    }
+  }
 }

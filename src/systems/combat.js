@@ -54,7 +54,9 @@ function dealDamage(attacker, target, amount) {
     return;
   }
   if (target.kind === 'bug') {
-    target.hp -= amount;
+    // v7: 重甲虫物理减伤 50%（仅普通伤害链；法师塔/闪电直接 bug.hp -=，绕过此处）
+    const finalAmt = (typeof applyHeavyReduction === 'function') ? applyHeavyReduction(target, amount) : amount;
+    target.hp -= finalAmt;
     if (target.hp <= 0) killBug(target);
     return;
   }

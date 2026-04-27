@@ -10,6 +10,8 @@ function drawUI(ctx) {
   drawMessage(ctx);
   // v6 浮层（绘制在所有 UI 之上）
   drawCardOverlay(ctx);
+  drawTasksOverlay(ctx);     // v7 新增
+  drawRaidPreview(ctx);      // v7: 来袭预警卡
 }
 
 function drawTopBar(ctx) {
@@ -867,4 +869,132 @@ function wrapText(ctx, text, x, y, maxW, lineH) {
     }
   }
   if (line) ctx.fillText(line, x + maxW / 2, cy);
+}
+
+// v7 §2/§8: 任务卡浮层（右上角）
+function drawTasksOverlay(ctx) {
+  if (!S.tasks || !S.tasks.active || S.tasks.active.length === 0) return;
+  const cardW = 220, cardH = 64, gap = 6;
+  const startX = G.canvasWidth - cardW - 8;
+  const startY = G.mapTop + 8;
+  for (let i = 0; i < S.tasks.active.length; i++) {
+    const t = S.tasks.active[i];
+    const x = startX, y = startY + i * (cardH + gap);
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillRect(x, y, cardW, cardH);
+    ctx.strokeStyle = t.isTutorial ? '#9B6BD9' : '#5DADE2';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, cardW, cardH);
+    // 左侧色条
+    ctx.fillStyle = t.isTutorial ? '#7C5DBF' : '#3498DB';
+    ctx.fillRect(x, y, 4, cardH);
+    // 标题
+    ctx.fillStyle = '#FFF';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText(t.title, x + 10, y + 6);
+    // 进度
+    ctx.font = 'bold 11px sans-serif';
+    ctx.fillStyle = '#FFD54F';
+    ctx.textAlign = 'right';
+    const progressStr = t.target > 1 ? `${Math.floor(t.progress || 0)}/${t.target}` : '';
+    ctx.fillText(progressStr, x + cardW - 8, y + 7);
+    // 描述
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#CCC';
+    ctx.textAlign = 'left';
+    let desc = t.description || '';
+    const maxW = cardW - 20;
+    if (ctx.measureText(desc).width > maxW) {
+      while (desc.length > 0 && ctx.measureText(desc + '…').width > maxW) desc = desc.slice(0, -1);
+      desc += '…';
+    }
+    ctx.fillText(desc, x + 10, y + 24);
+    // 进度条
+    const barX = x + 10, barY = y + cardH - 18, barW = cardW - 20, barH = 4;
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(barX, barY, barW, barH);
+    const frac = Math.min(1, (t.progress || 0) / Math.max(1, t.target));
+    ctx.fillStyle = '#5DBF5D';
+    ctx.fillRect(barX, barY, barW * frac, barH);
+    // 奖励
+    let rewardStr = '';
+    if (t.reward) {
+      if (t.reward.glue) rewardStr += `+${t.reward.glue}胶 `;
+      if (t.reward.gems) rewardStr += `+${t.reward.gems}💎 `;
+      if (t.reward.card) rewardStr += `+1 ${({ normal: '普通卡', rare: '稀有卡', epic: '史诗卡', special: '特殊卡' })[t.reward.card] || '卡'}`;
+    }
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#FFD54F';
+    ctx.textAlign = 'right';
+    ctx.fillText(rewardStr, x + cardW - 8, y + cardH - 4);
+  }
+}
+
+// v7 §6: 来袭预警卡（屏幕中央偏上、半透明）
+function drawRaidPreview(ctx) {
+  if (!S.raidPreview) return;
+  const rp = S.raidPreview;
+  const w = 280, h = 88;
+  const x = (G.canvasWidth - w) / 2;
+  const y = G.mapTop + 8;
+
+  ctx.fillStyle = 'rgba(20,15,15,0.88)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = '#E67E22';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  ctx.lineWidth = 1;
+
+  // 标题
+  ctx.fillStyle = '#FFD54F';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('⚠ 第 ' + rp.day + ' 夜来袭', x + w / 2, y + 8);
+
+  // 内容（按精度）
+  ctx.font = '12px sans-serif';
+  ctx.fillStyle = '#FFF';
+  ctx.textAlign = 'left';
+  let ty = y + 32;
+  if (rp.precision === 'precise') {
+    ctx.fillText('方向：' + (rp.direction || '未知'), x + 12, ty);
+    ctx.fillText('约 ' + rp.countEstimate + ' 只', x + 160, ty);
+    ty += 18;
+    // 类型展示
+    const types = [];
+    for (const k in rp.mix) {
+      if (rp.mix[k] > 0.05) {
+        const label = ({ normal: '普通', fast: '快速', heavy: '重甲', flying: '飞行', exploder: '自爆' })[k] || k;
+        types.push(label + ' ' + Math.round(rp.mix[k] * 100) + '%');
+      }
+    }
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#CCC';
+    ctx.fillText(types.join('、'), x + 12, ty);
+  } else if (rp.precision === 'rough') {
+    ctx.fillText('方向：' + (rp.direction || '未知'), x + 12, ty);
+    ctx.fillText('约 ' + rp.countEstimate + ' 只', x + 160, ty);
+    ty += 18;
+    let main = 'normal', mainPct = 0;
+    for (const k in rp.mix) if (rp.mix[k] > mainPct) { main = k; mainPct = rp.mix[k]; }
+    const label = ({ normal: '普通虫', fast: '快速虫', heavy: '重甲虫', flying: '飞行虫', exploder: '自爆虫' })[main] || main;
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#CCC';
+    ctx.fillText(label + '为主', x + 12, ty);
+  } else {
+    ctx.fillText('规模：大', x + 12, ty);
+    ty += 18;
+    ctx.font = '11px sans-serif';
+    ctx.fillStyle = '#999';
+    ctx.fillText('类型：未知', x + 12, ty);
+  }
+
+  // 底部倒计时
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'right';
+  ctx.fillText('显示 ' + Math.ceil(Math.max(0, rp.timer)) + 's', x + w - 12, y + h - 12);
 }

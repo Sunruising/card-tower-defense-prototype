@@ -82,6 +82,23 @@ window.CARD_DEFS = {
     description: '英雄立即返回基地（中断出征）',
   },
 
+  // ===== v7 特殊卡（仅从发现点获得，不入商店/卡包）=====
+  ancient_wall: {
+    id: 'ancient_wall', name: '古老的石墙', type: 'building', subtype: 'ancient_wall',
+    cost: 0, targetType: 'ground', rarity: 'special',
+    description: '建造一座 200 hp 的墙体，挡住虫子寻路；无攻击',
+  },
+  bug_signal: {
+    id: 'bug_signal', name: '虫族信号灯', type: 'spell',
+    cost: 0, targetType: 'global', rarity: 'special',
+    description: '永久揭示一个最近虫巢周围 3 格的迷雾',
+  },
+  time_glass: {
+    id: 'time_glass', name: '时间沙漏', type: 'spell',
+    cost: 0, targetType: 'global', rarity: 'special',
+    description: '把当前阶段的剩余时间倒回 30 秒',
+  },
+
   // ===== 英雄技能（独立槽位）=====
   sweep: {
     id: 'sweep', name: '扫击', type: 'hero_skill',
