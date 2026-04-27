@@ -729,6 +729,49 @@ function updateBuildings(dt) {
           makeSwordsman(b, b.x + (Math.random() * 1.2 - 0.6), b.y + (Math.random() * 1.2 - 0.6));
         }
       }
+    } else if (b.type === 'stone_wall') {
+      // v7.1: 石墙不主动行为；阻挡寻路在 findBlockerAt 中处理（飞行虫除外）
+    } else if (b.type === 'outpost') {
+      // v7.1: 哨所远程低伤 + 索敌优先飞行虫
+      b.attackCd = Math.max(0, b.attackCd - dt);
+      const range = G.outpost.attackRange + ((S.mul && S.mul.towerRangeBonus) || 0) + (b.rangeBonus || 0);
+      // 优先飞行虫
+      let target = null, bestD = Infinity;
+      for (const bug of S.bugs) {
+        if (bug.dead || bug.retreating) continue;
+        if (typeof isVisible === 'function' && !isVisible(bug.x, bug.y)) continue;
+        const d = Math.hypot(bug.x - b.x, bug.y - b.y);
+        if (d > range) continue;
+        // 飞行虫优先：直接选第一个飞行虫并退出
+        if (bug.isFlying) { target = bug; break; }
+        if (d < bestD) { bestD = d; target = bug; }
+      }
+      if (target && b.attackCd <= 0) {
+        const dmg = G.outpost.damage * (b.damageMul || 1);
+        dealDamage(b, target, dmg);
+        addAttackFx(b, target, 'ally');
+        b.attackCd = 1 / (G.outpost.attackSpeed * (b.attackSpeedMul || 1));
+      }
+    } else if (b.type === 'repair_station') {
+      // v7.1: 维修台周围 3×3 玩家建筑每秒回血
+      b.healTimer = (b.healTimer || G.repairStation.healInterval) - dt;
+      if (b.healTimer <= 0) {
+        const r = G.repairStation.healRadius + (b.healRadiusBonus || 0);
+        const heal = G.repairStation.healAmount + (b.healAmountAdd || 0);
+        for (const other of S.buildings) {
+          if (other.dead) continue;
+          if (other.id === b.id) continue;                    // 不互修（自己也不修自己）
+          if (other.type === 'repair_station') continue;       // 维修台之间不互修
+          if (other.hp >= other.maxHp) continue;
+          const d = Math.hypot(other.x - b.x, other.y - b.y);
+          if (d <= r) {
+            other.hp = Math.min(other.maxHp, other.hp + heal);
+          }
+        }
+        b.healTimer = G.repairStation.healInterval;
+      }
+    } else if (b.type === 'supply_station') {
+      // v7.1: 补给站夜后结算 +5（实际触发在 phase.js night→dawn）
     }
   }
 

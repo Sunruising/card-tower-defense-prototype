@@ -131,6 +131,12 @@ function grantTaskReward(reward) {
 
 function updateTasks(dt) {
   ensureTaskState();
+  // v7.1: hero_revealed_cells —— 监测视觉总数变化（用快照差值近似 hero 揭雾贡献）
+  const curRevealed = computeFogRevealedTotal();
+  if (S.tasks._lastRevealed === undefined) S.tasks._lastRevealed = curRevealed;
+  const newlyRevealed = Math.max(0, curRevealed - S.tasks._lastRevealed);
+  S.tasks._lastRevealed = curRevealed;
+
   // 查询型 trigger
   for (const task of S.tasks.active) {
     if (task.trigger === 'fog_revealed_pct') {
@@ -138,7 +144,15 @@ function updateTasks(dt) {
       if (pct >= task.target) {
         task.progress = task.target;
         completeTask(task);
-        return;     // 防止迭代时修改
+        return;
+      }
+    } else if (task.trigger === 'hero_revealed_cells') {
+      // 累计英雄揭开的新格子（其他来源也算 — 简化版；玩家自由移动驱散最多）
+      task.progress = (task.progress || 0) + newlyRevealed;
+      if (task.progress >= task.target) {
+        task.progress = task.target;
+        completeTask(task);
+        return;
       }
     } else if (task.trigger === 'gems_total') {
       const gems = (S.playerState && S.playerState.gems) || 0;
@@ -149,6 +163,18 @@ function updateTasks(dt) {
       }
     }
   }
+}
+
+function computeFogRevealedTotal() {
+  if (!S.fogMap || !S.fogMap.cells) return 0;
+  let visible = 0;
+  for (let y = 0; y < G.mapHeight; y++) {
+    for (let x = 0; x < G.mapWidth; x++) {
+      const c = S.fogMap.cells[y][x];
+      if (c && (c.ownerCount > 0 || (c.tempExpireAt > performance.now()))) visible++;
+    }
+  }
+  return visible;
 }
 
 function computeFogRevealedPct() {

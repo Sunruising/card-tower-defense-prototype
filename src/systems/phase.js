@@ -144,6 +144,8 @@ function updatePhase(dt) {
   } else if (nextPhase === 'dawn') {
     for (const bug of S.bugs) if (!bug.dead && !bug.isGuard) bug.retreating = true;
     spawnGuardBugs();
+    // v7.1: 夜晚结束 → 保底胶 + 补给站结算
+    settleNightEndGlue();
   } else if (nextPhase === 'day') {
     S.tokens = Math.min(G.initial.tokenCap, S.tokens + G.initial.tokenPerDay);
     // v7: spawnLateNestsIfDue 已废弃（NO-OP），保留调用以兼容（或可移除）
@@ -166,6 +168,38 @@ function updatePhase(dt) {
   }
 
   // v5 英雄技能宪法：CD 由 ai.js updateHero 持续倒数
+}
+
+// v7.1: 夜晚结束（night → dawn 切换瞬间）保底胶 + 补给站结算
+function settleNightEndGlue() {
+  if (!G.nightEndGlue) return;
+  const cfg = G.nightEndGlue;
+  // 保底胶 + 天赋"夜后红利"
+  let baseAmount = (S.day <= cfg.earlyDayThreshold) ? cfg.early : cfg.late;
+  if (S.bloodMoonActive) baseAmount = cfg.bloodMoon;
+  baseAmount += ((S.mul && S.mul.nightEndGlueBonus) || 0);
+  S.glue += baseAmount;
+  // 补给站结算
+  const flatBonus = (S.mul && S.mul.supplyBonusFlat) || 0;
+  let supplyTotal = 0;
+  for (const b of S.buildings) {
+    if (b.dead) continue;
+    if (b.type !== 'supply_station') continue;
+    const bonus = (b.supplyBonusBase || G.supplyStation.nightEndBonus) + (b.supplyBonusAdd || 0) + flatBonus;
+    supplyTotal += bonus;
+    // 补给站发光特效
+    if (typeof spawnFloatingText === 'function') {
+      spawnFloatingText(b.x, b.y, '+' + bonus + ' 胶', 'loot');
+    }
+  }
+  S.glue += supplyTotal;
+  if (typeof bumpStat === 'function') bumpStat('glue');
+  // 全屏 toast：基础保底
+  const total = baseAmount + supplyTotal;
+  const subText = supplyTotal > 0 ? `（保底 ${baseAmount} + 补给 ${supplyTotal}）` : '幸存者送来物资';
+  if (typeof showNightNotice === 'function') {
+    showNightNotice('+' + total + ' 胶 · ' + subText, 'dawn');
+  }
 }
 
 function spawnGuardBugs() {

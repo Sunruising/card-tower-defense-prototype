@@ -172,6 +172,9 @@ function applyAllTalentEffects() {
     if (e.searchlightIntervalMul) S.mul.searchlightIntervalMul *= e.searchlightIntervalMul;
     if (e.scoutSpeedMul) S.mul.scoutSpeedMul *= e.scoutSpeedMul;
     if (e.scoutLifetimeBonus) S.mul.scoutLifetimeBonus += e.scoutLifetimeBonus;
+    // v7.1 工事相关
+    if (e.supplyBonusFlat) S.mul.supplyBonusFlat = (S.mul.supplyBonusFlat || 0) + e.supplyBonusFlat;
+    if (e.nightEndGlueBonus) S.mul.nightEndGlueBonus = (S.mul.nightEndGlueBonus || 0) + e.nightEndGlueBonus;
   }
 
   // ===== 4) 一次性英雄回血 =====

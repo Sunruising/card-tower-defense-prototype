@@ -43,15 +43,28 @@ function makeBuilding(type, x, y, opts) {
       makeSwordsman(b, b.x + (Math.random() * 1.2 - 0.6), b.y + (Math.random() * 1.2 - 0.6));
     }
   } else if (type === 'searchlight') {
-    // v7.1: 探照灯 —— 缓慢锥形永久驱散
     b.direction = opts.direction || 'right';
-    // v8.1: searchlightIntervalMul 缩放扫描间隔
     b.scanTimer = G.searchlight.scanInterval * ((S.mul && S.mul.searchlightIntervalMul) || 1);
-    b.targetable = G.searchlight.targetable;           // true（可被攻击）
-    b.fogOwnerId = 'searchlight#' + b.id;              // revealPermanent / removePermanent owner
-    // 不立即驱散；扫描由 updateSearchlights 触发
-    // v8: 视野单位吸引仇恨
+    b.targetable = G.searchlight.targetable;
+    b.fogOwnerId = 'searchlight#' + b.id;
     b.attractsAggro = true;
+  } else if (type === 'stone_wall') {
+    // v7.1: 阻挡寻路（飞行虫无视）—— 不主动攻击
+    b.blocksPath = true;
+  } else if (type === 'outpost') {
+    // v7.1: 远程低伤 + 永久驱散 3×3 + 优先飞行虫
+    b.attackCd = 0;
+    if (typeof revealPermanent === 'function') {
+      revealPermanent(x, y, G.outpost.revealRadius, 'outpost#' + b.id);
+    }
+    b.fogOwnerId = 'outpost#' + b.id;
+    b.attractsAggro = true;            // 视野建筑同样吸引仇恨
+  } else if (type === 'repair_station') {
+    // v7.1: 周围 3×3 玩家建筑每秒回血 +2
+    b.healTimer = G.repairStation.healInterval;
+  } else if (type === 'supply_station') {
+    // v7.1: 夜后 +5 胶（结算由 phase.js 处理）
+    b.supplyBonusBase = G.supplyStation.nightEndBonus;
   }
   // v8.3: 升级等级初始化为 0
   b.upgradeLevel = 0;
@@ -116,6 +129,7 @@ if (typeof window !== 'undefined') window.setSearchlightDirection = setSearchlig
 function buildingCfgKey(type) {
   // type → G 字段名（多数同名，少数 camelCase）
   const map = {
+    // 旧采集器（v7.1 已废弃，但保留 cfgKey 兜底以防外部触发）
     collector: 'collector',
     reinforced_collector: 'reinforcedCollector',
     tower: 'tower',
@@ -124,6 +138,11 @@ function buildingCfgKey(type) {
     watchtower: 'watchtower',
     barracks: 'barracks',
     searchlight: 'searchlight',
+    // v7.1 工事
+    stone_wall: 'stoneWall',
+    outpost: 'outpost',
+    repair_station: 'repairStation',
+    supply_station: 'supplyStation',
   };
   return map[type] || type;
 }
@@ -133,6 +152,10 @@ function killBuilding(b) {
   // v5: 瞭望塔毁灭时回滚揭雾（保留与主区相连部分）
   if (b.type === 'watchtower' && typeof removePermanent === 'function') {
     removePermanent('watchtower#' + b.id);
+  }
+  // v7.1: 哨所毁灭时回滚揭雾（与瞭望塔同处理）
+  if (b.type === 'outpost' && typeof removePermanent === 'function') {
+    removePermanent('outpost#' + b.id);
   }
   // v8: 探照灯被毁/拆除时不回滚 fog —— 已驱散的格子永久保留为 visible
   // owner key 仍存在于 fog 的 ownersMap 中，那些格子的 ownerCount 不会减；

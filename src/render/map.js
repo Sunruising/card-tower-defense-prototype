@@ -336,6 +336,70 @@ function drawBuilding(ctx, b) {
     ctx.arc(px, py, range, startAng, endAng);
     ctx.closePath();
     ctx.stroke();
+  } else if (b.type === 'stone_wall') {
+    // v7.1: 石墙 —— 灰色矩形，砖块纹理
+    ctx.fillStyle = G.colors.stoneWall || '#7F8C8D';
+    ctx.fillRect(px - 18, py - 18, 36, 36);
+    ctx.strokeStyle = '#34495E';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px - 18, py - 18, 36, 36);
+    // 砖块横线
+    ctx.beginPath();
+    ctx.moveTo(px - 18, py - 6); ctx.lineTo(px + 18, py - 6);
+    ctx.moveTo(px - 18, py + 6); ctx.lineTo(px + 18, py + 6);
+    // 错位竖线
+    ctx.moveTo(px, py - 18); ctx.lineTo(px, py - 6);
+    ctx.moveTo(px - 9, py - 6); ctx.lineTo(px - 9, py + 6);
+    ctx.moveTo(px + 9, py - 6); ctx.lineTo(px + 9, py + 6);
+    ctx.moveTo(px, py + 6); ctx.lineTo(px, py + 18);
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  } else if (b.type === 'outpost') {
+    // v7.1: 哨所 —— 黄色塔楼 + 望远镜符号
+    ctx.fillStyle = G.colors.outpost || '#F39C12';
+    ctx.fillRect(px - 14, py - 4, 28, 18);
+    ctx.beginPath();
+    ctx.moveTo(px - 16, py - 4); ctx.lineTo(px, py - 18); ctx.lineTo(px + 16, py - 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#FFF';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    drawCenterChar(ctx, px, py + 18, '哨', '#FFF', 9);
+    // 视野半径提示
+    ctx.strokeStyle = 'rgba(243,156,18,0.25)';
+    ctx.beginPath(); ctx.arc(px, py, G.outpost.attackRange * G.cellSize, 0, Math.PI * 2); ctx.stroke();
+  } else if (b.type === 'repair_station') {
+    // v7.1: 维修台 —— 绿色十字
+    ctx.fillStyle = G.colors.repairStation || '#27AE60';
+    ctx.fillRect(px - 16, py - 16, 32, 32);
+    ctx.strokeStyle = '#FFF';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px - 16, py - 16, 32, 32);
+    // 白色十字
+    ctx.fillStyle = '#FFF';
+    ctx.fillRect(px - 2, py - 10, 4, 20);
+    ctx.fillRect(px - 10, py - 2, 20, 4);
+    ctx.lineWidth = 1;
+    // 范围提示（每帧脉动）
+    if (Math.sin(performance.now() / 600) > 0) {
+      ctx.strokeStyle = 'rgba(39,174,96,0.25)';
+      ctx.beginPath(); ctx.arc(px, py, G.repairStation.healRadius * G.cellSize, 0, Math.PI * 2); ctx.stroke();
+    }
+  } else if (b.type === 'supply_station') {
+    // v7.1: 补给站 —— 紫色箱子 + 胶罐
+    ctx.fillStyle = G.colors.supplyStation || '#9B59B6';
+    ctx.fillRect(px - 14, py - 14, 28, 28);
+    ctx.strokeStyle = '#FFD54F';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(px - 14, py - 14, 28, 28);
+    // 胶罐（圆顶）
+    ctx.fillStyle = '#F1C40F';
+    ctx.beginPath(); ctx.arc(px, py - 4, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#FFF';
+    ctx.beginPath(); ctx.arc(px, py - 4, 7, 0, Math.PI * 2); ctx.stroke();
+    drawCenterChar(ctx, px, py + 8, '补', '#FFF', 9);
+    ctx.lineWidth = 1;
   }
 
   if (S.selectedBuildingId === b.id) {

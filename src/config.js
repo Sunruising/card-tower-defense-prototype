@@ -80,8 +80,12 @@ window.G = {
     hero: '#27AE60',
     swordsman: '#52C873',
     scout: '#5DADE2',
-    collector: '#F1C40F',
+    collector: '#F1C40F',                // v7.1 删除采胶器，颜色保留供旧引用兜底
     reinforcedCollector: '#E67E22',
+    stoneWall: '#7F8C8D',                // v7.1 石墙
+    outpost: '#F39C12',                  // v7.1 哨所（黄）
+    repairStation: '#27AE60',            // v7.1 维修台（绿）
+    supplyStation: '#9B59B6',            // v7.1 补给站（紫）
     tower: '#E67E22',
     mageTower: '#9B59B6',
     slowSpike: '#16A085',
@@ -140,7 +144,7 @@ window.G = {
   // ----- 初始（v7: 起始胶 40→30）-----
   initial: {
     day: 1, phase: 'day',
-    glue: 50, tokens: 5, gems: 0,           // v8.3: 30→50（开局更宽松）
+    glue: 20, tokens: 5, gems: 0,           // v7.1: 删采胶器后改 20（夜后保底兜底）
     tokenCap: 10, tokenPerDay: 1,
   },
 
@@ -348,20 +352,56 @@ window.G = {
     respawnTime: 10,
   },
 
+  // v7.1 工事卡（4 张全新）
+  stoneWall: {
+    hp: 120, maxHp: 120,
+    blocksPath: true,                    // 寻路阻挡（飞行虫除外）
+    targetable: true,                    // 能被打掉
+    breakWallDamage: 8,                  // 虫子"破墙"模式时每次伤害
+  },
+  outpost: {
+    hp: 60, maxHp: 60,
+    attackRange: 5,                      // 远程
+    attackSpeed: 0.67,                   // 1.5s 一次（1/1.5）
+    damage: 3,
+    revealRadius: 1.5,                   // 永久驱散 3×3（半径约 1.5）
+    priorityFlying: true,                // 索敌优先飞行虫
+    targetable: true,
+  },
+  repairStation: {
+    hp: 50, maxHp: 50,
+    healInterval: 1.0,                   // 每秒触发
+    healRadius: 1.5,                     // 3×3 范围
+    healAmount: 2,                       // 每次 +2 hp
+    targetable: true,
+  },
+  supplyStation: {
+    hp: 50, maxHp: 50,
+    nightEndBonus: 5,                    // 夜后结算 +5 胶
+    targetable: true,
+  },
+
+  // v7.1: 夜后保底胶（取代采胶器的被动收入）
+  nightEndGlue: {
+    early: 30,                           // Day 1-4
+    late: 25,                            // Day 5+
+    bloodMoon: 50,                       // 血月夜额外
+    earlyDayThreshold: 4,
+  },
+
   // ----- 卡牌 -----
   hand: { maxSize: 10 },                // v6: 上限指"堆数"
   // v6: 起始手牌 3 张
-  fixedStartingHand: ['collector', 'collector', 'tower'],
+  // v7.1: 删采胶器 → 教学手牌改为 [箭塔, 火雨, 侦察兵]
+  fixedStartingHand: ['tower', 'firerain', 'scout'],
 
-  // v6: 卡牌品质分级
+  // v6: 卡牌品质分级（v7.1 删 collector + 加 4 张工事）
   cardRarity: {
-    collector: 'normal',
-    reinforced_collector: 'rare',
     tower: 'normal',
     mage_tower: 'rare',
     slow_spike: 'rare',
     watchtower: 'rare',
-    searchlight: 'normal',             // v7.1
+    searchlight: 'normal',
     barracks: 'normal',
     firerain: 'normal',
     repair: 'normal',
@@ -370,7 +410,13 @@ window.G = {
     lightning: 'epic',
     recall: 'epic',
     sweep: 'normal',                   // 英雄技能
-    ancient_wall: 'special',           // v7: 仅发现点获得
+    // v7.1 工事池
+    stone_wall: 'normal',              // 直购
+    outpost: 'rare',                   // 卡包
+    repair_station: 'rare',            // 卡包
+    supply_station: 'normal',          // 直购
+    // 特殊（仅发现点）
+    ancient_wall: 'special',
     bug_signal: 'special',
     time_glass: 'special',
   },
@@ -378,25 +424,27 @@ window.G = {
   // v7: 特殊卡池（rarity = 'special'，仅遗迹/宝箱可获得）
   specialCards: ['ancient_wall', 'bug_signal', 'time_glass'],
 
-  // v6: 商店栏（v7.1: 直购 7 张普通卡，含探照灯）
+  // v7.1: 商店栏 7 项（删采胶器 + 加石墙/补给站）
   shop: [
-    { id: 'collector',   cost: 15 },
-    { id: 'tower',       cost: 25 },
-    { id: 'barracks',    cost: 30 },
-    { id: 'searchlight', cost: 25 },     // v7.1
-    { id: 'firerain',    cost: 20 },
-    { id: 'repair',      cost: 18 },
-    { id: 'scout',       cost: 25 },
+    { id: 'tower',         cost: 25 },
+    { id: 'barracks',      cost: 30 },
+    { id: 'stone_wall',    cost: 18 },     // v7.1 新
+    { id: 'firerain',      cost: 20 },
+    { id: 'repair',        cost: 18 },
+    { id: 'scout',         cost: 25 },
+    { id: 'supply_station', cost: 22 },    // v7.1 新
   ],
 
   // v6: 子卡池仅在战利品 + 血月奖励中使用（不再被卡包按钮调用）
   // v6 战利品包从这里抽稀有/史诗
+  // v7.1: 战利品稀有池（删 reinforced_collector，加哨所/维修台）
   lootRarePool: [
-    { id: 'mage_tower', weight: 22 },
-    { id: 'watchtower', weight: 22 },
-    { id: 'reinforced_collector', weight: 22 },
-    { id: 'slow_spike', weight: 18 },
-    { id: 'heal', weight: 16 },
+    { id: 'mage_tower',    weight: 18 },
+    { id: 'watchtower',    weight: 18 },
+    { id: 'outpost',       weight: 18 },     // v7.1 新
+    { id: 'repair_station',weight: 18 },     // v7.1 新
+    { id: 'slow_spike',    weight: 14 },
+    { id: 'heal',          weight: 14 },
   ],
   lootEpicPool: [
     { id: 'lightning', weight: 60 },
@@ -561,13 +609,22 @@ window.G = {
       { cost: 50, hpAdd: 15, damageMul: 1.4, attackSpeedMul: 1.0, splashMul: 1.2 },
       { cost: 90, hpAdd: 25, damageMul: 1.4, attackSpeedMul: 1.3, splashMul: 1.3 },
     ],
-    collector: [
-      { cost: 25, hpAdd: 15, produceAdd: 1 },
-      { cost: 50, hpAdd: 20, produceAdd: 1 },
+    // v7.1 工事建筑升级
+    stone_wall: [
+      { cost: 12, hpAdd: 60 },                                   // 120→180 hp
+      { cost: 25, hpAdd: 100 },                                  // →280 hp
     ],
-    reinforced_collector: [
-      { cost: 40, hpAdd: 20, produceAdd: 1 },
-      { cost: 80, hpAdd: 30, produceAdd: 2 },
+    outpost: [
+      { cost: 35, hpAdd: 20, damageMul: 1.5, attackSpeedMul: 1.2 },
+      { cost: 70, hpAdd: 30, damageMul: 1.5, attackSpeedMul: 1.3, rangeAdd: 1 },
+    ],
+    repair_station: [
+      { cost: 30, hpAdd: 20, healAmountAdd: 1 },                // 2→3
+      { cost: 60, hpAdd: 30, healAmountAdd: 1, healRadiusAdd: 0.5 },
+    ],
+    supply_station: [
+      { cost: 20, hpAdd: 20, supplyBonusAdd: 3 },               // 5→8 / 夜
+      { cost: 40, hpAdd: 30, supplyBonusAdd: 5 },               // →13 / 夜
     ],
     barracks: [
       { cost: 40, hpAdd: 30, swordsmanHpMul: 1.3, swordsmanDmgMul: 1.2 },
@@ -635,9 +692,10 @@ window.G = {
     // 教学期 4 个固定任务（按顺序）
     tutorial: [
       {
-        id: 'tut1', title: '放下采胶器',
-        description: '把"基础采胶器"打到地图空格上',
-        trigger: 'place_collector', count: 1,
+        // v7.1: 教学任务 1 改写 —— 派英雄探索
+        id: 'tut1', title: '派英雄探索',
+        description: '左键点地图远处任意已揭格 → 英雄走过去并揭开 ≥3 格迷雾',
+        trigger: 'hero_revealed_cells', count: 3,
         reward: { glue: 10 },
       },
       {
@@ -805,13 +863,13 @@ window.G = {
         description: '减速地刺使用次数 5 → 8',
         prereq: null, effect: { spikeUsesBonus: 3 } },
 
-      // ===== 生产 =====
-      { id: 'glue_harvest', category: 'production', name: '采胶丰收', cost: 2,
-        description: '采胶器单次产出 +1（普通 1 → 2）',
-        prereq: null, effect: { collectorProduceBonus: 1 } },
-      { id: 'workshop_warm', category: 'production', name: '工坊速热', cost: 1,
-        description: '加固采胶器暖机时长 −5 秒',
-        prereq: null, effect: { reinforcedWarmupReduce: 5 } },
+      // ===== 生产 / 工事（v7.1: 删采胶器后改为工事相关）=====
+      { id: 'supply_master', category: 'production', name: '补给增产', cost: 2,
+        description: '所有补给站夜后 +3 胶（叠加）',
+        prereq: null, effect: { supplyBonusFlat: 3 } },
+      { id: 'night_dividend', category: 'production', name: '夜后红利', cost: 1,
+        description: '每个夜晚结束时额外 +10 胶（系统级）',
+        prereq: null, effect: { nightEndGlueBonus: 10 } },
       { id: 'farsight_tower', category: 'production', name: '望远千里', cost: 2,
         description: '瞭望塔半径 +1（3 → 4）',
         prereq: null, effect: { watchtowerRadiusBonus: 1 } },

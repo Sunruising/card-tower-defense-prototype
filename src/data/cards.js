@@ -6,16 +6,26 @@
 //   'global'   —— 立即全局
 //   'enemy'    —— 选敌方虫子
 window.CARD_DEFS = {
-  // ===== 生产 =====
-  collector: {
-    id: 'collector', name: '基础采胶器', type: 'building', subtype: 'collector',
-    cost: 20, targetType: 'ground', rarity: 'normal',
-    description: '基础采胶器：每 4s 产 1 胶（0.25/s），hp 20',
+  // ===== 工事池（v7.1：取代采胶器，承担"建防线 + 间接经济"）=====
+  stone_wall: {
+    id: 'stone_wall', name: '石墙', type: 'building', subtype: 'stone_wall',
+    cost: 18, targetType: 'ground', rarity: 'normal',
+    description: '石墙：阻挡虫子寻路（飞行虫无视）；hp 120；堵死所有路径时虫子破墙',
   },
-  reinforced_collector: {
-    id: 'reinforced_collector', name: '加固采胶器', type: 'building', subtype: 'reinforced_collector',
-    cost: 35, targetType: 'ground', rarity: 'rare',
-    description: '加固采胶器：10s 暖机后每 2s 产 1 胶（0.5/s），hp 40',
+  outpost: {
+    id: 'outpost', name: '哨所', type: 'building', subtype: 'outpost',
+    cost: 0, targetType: 'ground', rarity: 'rare',
+    description: '哨所：远程低伤（5 格 / 1.5s 一发 / 3 伤）+ 永久驱散 3×3；索敌优先飞行虫；hp 60',
+  },
+  repair_station: {
+    id: 'repair_station', name: '维修台', type: 'building', subtype: 'repair_station',
+    cost: 0, targetType: 'ground', rarity: 'rare',
+    description: '维修台：周围 3×3 玩家建筑每秒回血 +2（不互修）；hp 50',
+  },
+  supply_station: {
+    id: 'supply_station', name: '补给站', type: 'building', subtype: 'supply_station',
+    cost: 22, targetType: 'ground', rarity: 'normal',
+    description: '补给站：每个夜晚结束时还活着 → 额外贡献 +5 胶；hp 50（脆，需保护）',
   },
   watchtower: {
     id: 'watchtower', name: '瞭望塔', type: 'building', subtype: 'watchtower',
